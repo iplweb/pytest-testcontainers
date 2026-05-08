@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff + format)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.1
+        with:
+          enable-cache: true
+      - run: uv venv --python 3.13
+      - run: uv pip install -e ".[dev]"
+      - run: uv run ruff check src/ tests/
+      - run: uv run ruff format --check src/ tests/
+
+  unit-tests:
+    name: Unit (no Docker) - py${{ matrix.python }}, pytest ${{ matrix.pytest }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+        pytest: ["7", "8"]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.1
+        with:
+          enable-cache: true
+      - name: Install
+        env:
+          PYTHON_VERSION: ${{ matrix.python }}
+          PYTEST_MAJOR: ${{ matrix.pytest }}
+        run: |
+          uv venv --python "$PYTHON_VERSION"
+          uv pip install -e ".[dev]"
+          uv pip install "pytest>=${PYTEST_MAJOR}.0,<${PYTEST_MAJOR}.99"
+      - name: Run unit tests
+        run: uv run pytest tests/ -m "not docker_required" -v
+
+  integration-tests:
+    name: Integration (Docker) - py${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.1
+        with:
+          enable-cache: true
+      - name: Install
+        env:
+          PYTHON_VERSION: ${{ matrix.python }}
+        run: |
+          uv venv --python "$PYTHON_VERSION"
+          uv pip install -e ".[dev]"
+      - run: docker version
+      - name: Run integration tests
+        env:
+          PYTEST_TESTCONTAINERS_QUIET: "1"
+        run: uv run pytest tests/ -v
+
+  reuse-smoke:
+    name: Reuse-mode smoke
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.1
+      - run: |
+          uv venv --python 3.13
+          uv pip install -e ".[dev]"
+      - name: First run (creates named container)
+        env:
+          PYTEST_TESTCONTAINERS_REUSE: "1"
+        run: uv run pytest tests/test_reuse_mode.py -v
+      - name: Second run (must reuse)
+        env:
+          PYTEST_TESTCONTAINERS_REUSE: "1"
+        run: uv run pytest tests/test_reuse_mode.py -v
+
+  xdist-smoke:
+    name: xdist (per-worker) smoke
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.1
+      - run: |
+          uv venv --python 3.13
+          uv pip install -e ".[dev]"
+      - run: uv run pytest -n 2 tests/test_makers_postgres.py tests/test_makers_redis.py -v

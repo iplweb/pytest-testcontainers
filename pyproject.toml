@@ -1,0 +1,129 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pytest-testcontainers"
+version = "0.1.0"
+description = "Named pytest fixtures and a maker convention on top of testcontainers-python."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Michał Pasternak", email = "michal.dtz@gmail.com" },
+]
+keywords = [
+    "pytest",
+    "pytest-plugin",
+    "testcontainers",
+    "docker",
+    "postgres",
+    "redis",
+    "mysql",
+    "mongodb",
+    "rabbitmq",
+    "fixtures",
+    "integration-testing",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Pytest",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Testing :: Mocking",
+]
+dependencies = [
+    "pytest >=7.4,<9",
+    "testcontainers >=4.7,<5",
+    "docker >=6.1",
+    "tomli >=2 ; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+hybrid-postgres = ["psycopg[binary] >=3.1"]
+hybrid-mysql = ["pymysql >=1.1"]
+hybrid-mongo = ["pymongo >=4.6"]
+hybrid = [
+    "psycopg[binary] >=3.1",
+    "pymysql >=1.1",
+    "pymongo >=4.6",
+]
+dev = [
+    "pytest-xdist",
+    "ruff",
+    "pre-commit",
+    "psycopg[binary] >=3.1",
+    "pymysql >=1.1",
+    "pymongo >=4.6",
+    "redis",
+    "pika",
+]
+
+[project.urls]
+Homepage = "https://github.com/iplweb/pytest-testcontainers"
+Repository = "https://github.com/iplweb/pytest-testcontainers"
+Issues = "https://github.com/iplweb/pytest-testcontainers/issues"
+Changelog = "https://github.com/iplweb/pytest-testcontainers/blob/main/CHANGELOG.md"
+
+[project.entry-points.pytest11]
+testcontainers = "pytest_testcontainers.plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pytest_testcontainers"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/pytest_testcontainers",
+    "tests",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.4"
+testpaths = ["tests"]
+markers = [
+    "docker_required: test requires a running Docker daemon",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:docker.*",
+    "ignore::DeprecationWarning:testcontainers.*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "B",
+    "UP",
+    "SIM",
+    "RUF",
+]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
