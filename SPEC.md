@@ -38,7 +38,7 @@ def pg():
 ```
 
 …times five services, times correct xdist worker handling, times a
-"function-scoped fresh DB" hybrid pattern, times reuse mode with stable
+"function-scoped fresh DB" clean-session pattern, times reuse mode with stable
 names and Ryuk disabled, times a normalized "Docker is not running"
 error. Every project we have seen reinvents the same ~150 lines.
 
@@ -62,7 +62,7 @@ Same shape for `make_redis`, `make_mysql`, `make_mongo`,
 `make_rabbitmq`, plus `make_container(Cls, **kwargs)` as a generic
 escape hatch.
 
-### Why also "ephemeral" and "hybrid" fixture variants
+### Why also "function-scoped" and "clean-session" fixture variants
 
 The single most common pytest-isolation anti-pattern is "I want a
 fresh container per test" (function-scoped container). That costs 3–8
@@ -71,7 +71,7 @@ is "same container, fresh database" — but writing the
 `CREATE DATABASE`/`DROP DATABASE` boilerplate yourself is annoying.
 We ship that as a built-in (§4.4): `tc_psql_db`, `tc_mysql_db`,
 `tc_mongo_db`, `tc_redis_clean`. Users get the fast path by default
-and have to opt into the slow path explicitly (`tc_psql_ephem`).
+and have to opt into the slow path explicitly (`tc_psql_func`).
 
 ### What this plugin is deliberately NOT
 
@@ -111,13 +111,13 @@ MIT, matching `testcontainers-python`. Confirmed before publishing.
   `make_rabbitmq`, `make_container`. Each returns a context manager.
 - Default session-scoped fixtures per service: `tc_psql`, `tc_redis`,
   `tc_mysql`, `tc_mongo`, `tc_rabbitmq`.
-- Ephemeral function-scoped fixtures per service: `tc_psql_ephem`,
-  `tc_redis_ephem`, `tc_mysql_ephem`, `tc_mongo_ephem`,
-  `tc_rabbitmq_ephem`. Documented as "discouraged unless you really
+- Function-scoped fixtures per service: `tc_psql_func`,
+  `tc_redis_func`, `tc_mysql_func`, `tc_mongo_func`,
+  `tc_rabbitmq_func`. Documented as "discouraged unless you really
   need this" (§5).
-- Hybrid fixtures (session container + fresh state per test):
+- Clean-session fixtures (session container + fresh state per test):
   `tc_psql_db`, `tc_mysql_db`, `tc_mongo_db`, `tc_redis_clean`. No
-  hybrid for RabbitMQ — cleanup not obvious; user wires their own.
+  clean-session for RabbitMQ — cleanup not obvious; user wires their own.
 - Reuse-mode plumbing: stable per-worker container names, Ryuk
   disabled, port-conflict detection on restart of stopped containers.
   Activated globally via env (`PYTEST_TESTCONTAINERS_REUSE=1`) or CLI
@@ -142,7 +142,7 @@ MIT, matching `testcontainers-python`. Confirmed before publishing.
 - **`docker-compose.yml` driving.** Use `pytest-docker-compose` /
   `pytest-docker` if that's what you want.
 - **Per-test container start as the default.** It's available
-  (`tc_<svc>_ephem`) but documented as a code smell (§5).
+  (`tc_<svc>_func`) but documented as a code smell (§5).
 - **Health-checking beyond what `testcontainers-python`'s wait
   strategies already provide.** We pass through; we do not reinvent.
 - **Kubernetes, Podman-rootless, remote Docker over SSH.** If
@@ -191,8 +191,8 @@ testcontainers, that means:
         ▼
   ┌──────────────────────────────────────────────────────────────┐
   │  fixtures.py                                                 │
-  │   tc_psql, tc_psql_ephem, tc_psql_db,                        │
-  │   tc_redis, tc_redis_ephem, tc_redis_clean,                  │
+  │   tc_psql, tc_psql_func, tc_psql_db,                        │
+  │   tc_redis, tc_redis_func, tc_redis_clean,                  │
   │   tc_mysql, …, tc_mongo, …, tc_rabbitmq, …                   │
   └──────────────────────────────────────────────────────────────┘
         │  (call)
@@ -360,7 +360,7 @@ The context manager's `__enter__`:
 `__exit__`:
 
 - Reuse mode: no-op.
-- Ephemeral mode: `container.stop()`. Errors logged with
+- Function-scoped mode: `container.stop()`. Errors logged with
   `logger.exception(...)`, then swallowed (we're in cleanup; raising
   here masks the original test failure). The atexit fallback handles
   process-abrupt-exit cases.
@@ -431,25 +431,25 @@ silently shadowed. This is the recommended pattern when you want
 *one* customized PG everywhere instead of writing a new fixture
 name like `bpp_pg`.
 
-### 4.3 Ephemeral function-scoped fixtures
+### 4.3 Function-scoped fixtures
 
 Fresh container per test, killed after each test. Same maker, same
-defaults. Naming: `tc_<service>_ephem`.
+defaults. Naming: `tc_<service>_func`.
 
 | Fixture | Scope | Cost per test |
 |---|---|---|
-| `tc_psql_ephem` | function | ~3–8s (container start) |
-| `tc_redis_ephem` | function | ~0.5–2s |
-| `tc_mysql_ephem` | function | ~5–15s |
-| `tc_mongo_ephem` | function | ~2–5s |
-| `tc_rabbitmq_ephem` | function | ~3–8s |
+| `tc_psql_func` | function | ~3–8s (container start) |
+| `tc_redis_func` | function | ~0.5–2s |
+| `tc_mysql_func` | function | ~5–15s |
+| `tc_mongo_func` | function | ~2–5s |
+| `tc_rabbitmq_func` | function | ~3–8s |
 
 Documented prominently as "you almost certainly don't want this — see
 §5". The fixture exists so users have a one-line option for the
 genuinely-needed case (testing the testcontainer-machinery itself,
 or DDL that corrupts container-level state).
 
-### 4.4 Hybrid fixtures (session container + fresh state per test)
+### 4.4 Clean-session fixtures (session container + fresh state per test)
 
 Function-scoped, but the underlying container is reused across the
 session — only the database/keyspace state is fresh.
@@ -511,27 +511,27 @@ class DbConnInfo:
         return f"{scheme}://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
 ```
 
-Same shape across all three DB hybrids; only `scheme=` default
+Same shape across all three DB clean-session fixtures; only `scheme=` default
 differs.
 
 ### 4.5 Full service × variant table
 
-| Service | Maker | Session fixture | Ephemeral fixture | Hybrid fixture |
+| Service | Maker | Session fixture | Function-scoped fixture | Clean-session fixture |
 |---|---|---|---|---|
-| Postgres | `make_postgres` | `tc_psql` | `tc_psql_ephem` | `tc_psql_db` |
-| Redis | `make_redis` | `tc_redis` | `tc_redis_ephem` | `tc_redis_clean` |
-| MySQL | `make_mysql` | `tc_mysql` | `tc_mysql_ephem` | `tc_mysql_db` |
-| MongoDB | `make_mongo` | `tc_mongo` | `tc_mongo_ephem` | `tc_mongo_db` |
-| RabbitMQ | `make_rabbitmq` | `tc_rabbitmq` | `tc_rabbitmq_ephem` | — |
+| Postgres | `make_postgres` | `tc_psql` | `tc_psql_func` | `tc_psql_db` |
+| Redis | `make_redis` | `tc_redis` | `tc_redis_func` | `tc_redis_clean` |
+| MySQL | `make_mysql` | `tc_mysql` | `tc_mysql_func` | `tc_mysql_db` |
+| MongoDB | `make_mongo` | `tc_mongo` | `tc_mongo_func` | `tc_mongo_db` |
+| RabbitMQ | `make_rabbitmq` | `tc_rabbitmq` | `tc_rabbitmq_func` | — |
 | (any) | `make_container(Cls, **kw)` | — | — | — |
 
 This table appears verbatim in the README.
 
 ### 4.6 Admin-command strategy: auto-detect Python client, fallback to `docker exec`
 
-Hybrid fixtures need to issue admin commands (`CREATE DATABASE`,
+Clean-session fixtures need to issue admin commands (`CREATE DATABASE`,
 `DROP DATABASE`, `dropDatabase()`, `FLUSHALL`). The total surface
-across all hybrids is **six single-shot commands** — no queries
+across all clean-session fixtures is **six single-shot commands** — no queries
 returning rows, no transactions, no schema introspection, no async.
 
 Two viable execution paths:
@@ -571,10 +571,10 @@ MySQL's fast path (pymysql) has no autocommit gotcha — `CREATE
 DATABASE` auto-commits regardless. Mongo fast path uses
 `MongoClient(...).drop_database(name)`, no SQL involved.
 
-- Default install (no extras): all hybrids use `docker exec`. Works
+- Default install (no extras): all clean-session fixtures use `docker exec`. Works
   out of the box, zero deps.
 - User installs `psycopg[binary]` / `pymysql` / `pymongo` (directly
-  or via the convenience extra `pytest-testcontainers[hybrid]`):
+  or via the convenience extra `pytest-testcontainers[clients]`):
   next session automatically picks the fast path. Zero code change
   in the user's tests.
 
@@ -586,16 +586,16 @@ DATABASE` auto-commits regardless. Mongo fast path uses
 Postgres client:
     pip install psycopg[binary]
 or via the convenience extra:
-    pip install pytest-testcontainers[hybrid]
+    pip install pytest-testcontainers[clients]
 Suppress this notice with PYTEST_TESTCONTAINERS_QUIET=1.
 ```
 
-Issued the first time a hybrid fixture for that service runs in the
+Issued the first time a clean-session fixture for that service runs in the
 session. Suppressible globally via `PYTEST_TESTCONTAINERS_QUIET=1`.
 Per-fixture-type so a project using only `tc_psql_db` doesn't see
 warnings about pymongo it never invoked.
 
-**Why no flag in v1.** A `hybrid_strategy = "auto" | "exec" | "client"`
+**Why no flag in v1.** A `clean_session_strategy = "auto" | "exec" | "client"`
 config knob is conceivable but premature. Auto-detect by import is
 deterministic and debuggable (`pip list | grep psycopg` answers
 "which path will run"). Forcing exec when client is installed is a
@@ -611,15 +611,15 @@ socket). For Redis specifically the cost-benefit inverts: exec is
 
 **Errors**: docker-exec path captures `(exit_code, stdout, stderr)`
 from `container.exec_run(..., demux=True)`. Non-zero exit raises
-`HybridFixtureError(command=..., stderr=..., exit_code=...)`.
+`CleanSessionFixtureError(command=..., stderr=..., exit_code=...)`.
 Python-client path catches the client-library exception and
-re-raises it as `HybridFixtureError(command=..., stderr=repr(exc),
+re-raises it as `CleanSessionFixtureError(command=..., stderr=repr(exc),
 exit_code=None)` — see §9.1 for the dataclass shape — so user code
 catches a single exception type regardless of which path ran. Both
 surface clearly in the pytest report.
 
 **Redis cleanup error policy** (referenced in §4.4): a non-zero
-exit from `redis-cli FLUSHALL` re-raises as `HybridFixtureError`
+exit from `redis-cli FLUSHALL` re-raises as `CleanSessionFixtureError`
 during fixture teardown — fail loudly rather than silently leak
 state into the next test.
 
@@ -630,17 +630,17 @@ want all fast paths in one shot can install them together:
 
 ```toml
 [project.optional-dependencies]
-hybrid-postgres = ["psycopg[binary] >=3.1"]
-hybrid-mysql    = ["pymysql >=1.1"]
-hybrid-mongo    = ["pymongo >=4.6"]
-hybrid          = [
-    "pytest-testcontainers[hybrid-postgres,hybrid-mysql,hybrid-mongo]",
+clients-postgres = ["psycopg[binary] >=3.1"]
+clients-mysql    = ["pymysql >=1.1"]
+clients-mongo    = ["pymongo >=4.6"]
+clients         = [
+    "pytest-testcontainers[clients-postgres,clients-mysql,clients-mongo]",
 ]
-# No hybrid-redis — Redis is always exec-based (see §4.6).
+# No clients-redis — Redis is always exec-based (see §4.6).
 ```
 
 These are **purely opt-in convenience**. The base install works
-fully — extras only switch hybrids to the fast path. No fixture
+fully — extras only switch clean-session fixtures to the fast path. No fixture
 fails if extras aren't installed; the warning hints at the upgrade
 path.
 
@@ -731,7 +731,7 @@ Same pattern for `make_redis`, `make_mysql`, `make_mongo`,
 change**, the rest of the test code is unchanged because the maker
 returns a vanilla `testcontainers-python` instance with the same API.
 
-### Combined with hybrid pattern
+### Combined with clean-session pattern
 
 ```python
 import pytest, secrets
@@ -755,7 +755,7 @@ def bpp_pg_db(bpp_pg):
         username="bpp", password="password", database="postgres",
     )
     # admin connection / CREATE DATABASE / DROP DATABASE wiring;
-    # see "Hybrid pattern walkthrough" in the README for the
+    # see "Clean-session pattern walkthrough" in the README for the
     # full implementation.
     ...
 ```
@@ -788,7 +788,7 @@ Don't use for:
 - Tests that mutate global server state (`ALTER SYSTEM SET …`,
   replication slots, prepared statements that persist).
 
-### 6.2 Hybrid: session container + fresh DB (`tc_psql_db`)
+### 6.2 Clean-session: session container + fresh DB (`tc_psql_db`)
 
 Same container as §6.1, but each test gets a brand-new database
 created and dropped around it.
@@ -804,7 +804,7 @@ orders of magnitude faster than per-test container start.
 
 This is what most users who think they need §6.3 actually want.
 
-### 6.3 Function-scoped container (`tc_psql_ephem`)
+### 6.3 Function-scoped container (`tc_psql_func`)
 
 Fresh container per test. Available, **strongly discouraged**.
 
@@ -812,7 +812,7 @@ The math, with concrete numbers:
 
 > **Container start = 3–5 seconds for Postgres.**
 > **100 tests × 5s = 8 minutes wasted on container startup.**
-> **The hybrid pattern (§6.2) gives the same isolation ~480× faster**
+> **The clean-session pattern (§6.2) gives the same isolation ~480× faster**
 > (50ms per fresh DB vs 5s per fresh container).
 
 Use ONLY when:
@@ -843,7 +843,7 @@ this pattern.
 ### 6.5 README cross-reference
 
 The README's "Container scope: when to use what" section MUST
-reproduce the four-option ladder above (Default / Hybrid / Ephemeral
+reproduce the four-option ladder above (Default / Clean-session / Function-scoped
 / Variant-B-rejected) with the 480× math, the concrete-numbers
 version of "100 tests × 5s = 8 minutes," and the three legitimate use
 cases for §6.3.
@@ -982,7 +982,7 @@ No TOML config table. The handful of toggles read at maker-call time:
 |---|---|
 | `--no-testcontainers` | Same as `PYTEST_TESTCONTAINERS=0`. |
 | `--testcontainers-reuse` | Same as `PYTEST_TESTCONTAINERS_REUSE=1`. |
-| `--testcontainers-no-reuse` | Force ephemeral mode regardless of env. |
+| `--testcontainers-no-reuse` | Force function-scoped mode regardless of env. |
 | `--testcontainers-project=NAME` | Override `PYTEST_TESTCONTAINERS_PROJECT`. |
 | `--testcontainers-clean` | Stop+remove all `<project>-tc-*` containers and exit pytest with code 0. |
 
@@ -1183,7 +1183,7 @@ Behavior outside pytest:
   they don't (workers use `gw0..gwN-1`). This is desired — it lets
   a `manage.py runserver` reuse the same container that `pytest`
   (no xdist) just left running.
-- **`atexit` cleanup**: registers normally for ephemeral mode, skips
+- **`atexit` cleanup**: registers normally for function-scoped mode, skips
   for reuse mode. Same semantics as inside pytest.
 - **`PYTEST_TESTCONTAINERS=0`**: only affects the *fixture stubs*
   (which don't exist outside pytest). Maker functions ignore it.
@@ -1234,8 +1234,8 @@ class ReuseConflictError(PytestTestcontainersError):
     """An existing reused container exists but cannot be brought
     back to running (port conflict, image mismatch, …)."""
 
-class HybridFixtureError(PytestTestcontainersError):
-    """A hybrid fixture (`tc_psql_db`, `tc_mysql_db`, `tc_mongo_db`,
+class CleanSessionFixtureError(PytestTestcontainersError):
+    """A clean-session fixture (`tc_psql_db`, `tc_mysql_db`, `tc_mongo_db`,
     `tc_redis_clean`) failed to issue an admin command (CREATE/DROP
     DATABASE, dropDatabase(), FLUSHALL).
 
@@ -1288,7 +1288,7 @@ and converted to `pytest.UsageError`:
   tail of the container logs (last 50 lines via
   `container.logs(tail=50)`).
 
-- `HybridFixtureError` → preserved as-is (NOT remapped to
+- `CleanSessionFixtureError` → preserved as-is (NOT remapped to
   `pytest.UsageError`). It is a test-time failure (admin SQL/JS
   failed against a running container), not a setup misconfiguration,
   and the user wants the full `command` + `stderr` + `exit_code` in
@@ -1340,12 +1340,12 @@ dev = [
     "pytest-xdist",
     "ruff",
     "pre-commit",
-    # Pull in all hybrid fast-path clients so the fast-path branches
-    # are exercised in our own test suite. `[hybrid]` is defined in
+    # Pull in all clean-session fast-path clients so the fast-path branches
+    # are exercised in our own test suite. `[clients]` is defined in
     # §4.7 (psycopg + pymysql + pymongo).
-    "pytest-testcontainers[hybrid]",
+    "pytest-testcontainers[clients]",
     # Clients we use directly in test code but which aren't part of
-    # any hybrid (`redis-py` for connection-level Redis tests; `pika`
+    # any clean-session (`redis-py` for connection-level Redis tests; `pika`
     # for RabbitMQ AMQP-level tests):
     "redis",
     "pika",
@@ -1373,12 +1373,12 @@ We do NOT depend on:
 
 - `pytest-django` (lives in package #2).
 - The user's preferred client library at runtime (`psycopg`, `redis`,
-  …) — users bring their own. The hybrid fixtures (`tc_psql_db` etc.)
+  …) — users bring their own. The clean-session fixtures (`tc_psql_db` etc.)
   auto-detect a Python client and **fall back to `docker exec`** when
-  it isn't installed (full design in §4.6). Hybrid fixtures therefore
+  it isn't installed (full design in §4.6). Clean-session fixtures therefore
   work out of the box with **zero extra dependencies** — installing
   `psycopg[binary]` / `pymysql` / `pymongo` (or the convenience extra
-  `pytest-testcontainers[hybrid]`) is purely an opt-in speedup. No
+  `pytest-testcontainers[clients]`) is purely an opt-in speedup. No
   fixture raises `UsageError` for missing client libs.
 
 ---
@@ -1401,7 +1401,7 @@ pytest-testcontainers/
 │       ├── __init__.py                  # re-exports makers + DbConnInfo
 │       ├── plugin.py                    # entry point: registers fixtures
 │       ├── makers.py                    # make_postgres, make_redis, …
-│       ├── fixtures.py                  # tc_psql, tc_psql_ephem, tc_psql_db, …
+│       ├── fixtures.py                  # tc_psql, tc_psql_func, tc_psql_db, …
 │       ├── containers.py                # _check_docker_daemon,
 │       │                                # _find_existing_container,
 │       │                                # _get_host_port, reuse logic,
@@ -1422,11 +1422,11 @@ pytest-testcontainers/
     ├── test_makers_rabbitmq.py
     ├── test_makers_generic.py           # make_container with custom Cls
     ├── test_fixtures_session.py
-    ├── test_fixtures_ephem.py
-    ├── test_fixtures_hybrid_psql.py
-    ├── test_fixtures_hybrid_redis.py
-    ├── test_fixtures_hybrid_mysql.py
-    ├── test_fixtures_hybrid_mongo.py
+    ├── test_fixtures_func.py
+    ├── test_fixtures_clean_session_psql.py
+    ├── test_fixtures_clean_session_redis.py
+    ├── test_fixtures_clean_session_mysql.py
+    ├── test_fixtures_clean_session_mongo.py
     ├── test_xdist.py                    # asserts per-worker container count
     ├── test_reuse_mode.py
     ├── test_reuse_collisions.py
@@ -1517,10 +1517,10 @@ documented here so the implementer doesn't omit anything):
    worked example. Phrased as "if you only read one section, read
    this one".
 
-6. **Hybrid pattern walkthrough.** Step-by-step for `tc_psql_db`:
+6. **Clean-session pattern walkthrough.** Step-by-step for `tc_psql_db`:
    what a fresh DB per test means, what the underlying SQL does, how
    to write your own variant on top of a custom-image session
-   container (the "combined with hybrid pattern" §5 snippet).
+   container (the "combined with clean-session pattern" §5 snippet).
 
 7. **Custom services via `make_container`.** Show wiring a Kafka
    container with `make_container(KafkaContainer, …)` so users see
@@ -1589,7 +1589,7 @@ Items kept verbatim (already generic):
 |---|---|---|---|
 | `make_postgres` / `make_redis` / … | ✅ owns | uses | uses |
 | `tc_psql` / `tc_redis` / etc. session fixtures | ✅ owns | uses | uses |
-| `tc_psql_db` / `tc_psql_ephem` / hybrid fixtures | ✅ owns | uses | uses |
+| `tc_psql_db` / `tc_psql_func` / clean-session fixtures | ✅ owns | uses | uses |
 | Reuse mode (Ryuk disabled, named containers, restart-stopped) | ✅ owns | inherits | inherits |
 | `_check_docker_daemon`, port resolution, atexit cleanup | ✅ owns | inherits | inherits |
 | `pytest_load_initial_conftests` eager hook | ❌ NOT here | ✅ owns | uses |
@@ -1643,28 +1643,28 @@ moot now (TOML schema strictness, `kind` registry,
 fixture exposure) because none of those mechanisms exist in #1
 anymore.
 
-1. **Hybrid fixture client library import strategy.**
+1. **Clean-session fixture client library import strategy.**
    **RESOLVED (user, 2026-05-08, revised): auto-detect Python client,
    fallback to `docker exec` with one-shot warning.** Full design
    in §4.6.
 
    Summary of what was decided:
-   - **Default install (no extras): hybrids work via `docker exec`**,
+   - **Default install (no extras): clean-session fixtures work via `docker exec`**,
      using the in-container CLI tools (`psql`, `mysql`, `mongosh`,
      `redis-cli`). Zero host-side deps. Tests run out of the box.
    - **If client lib is importable** (`psycopg` / `pymysql` /
      `pymongo`), the fixture automatically uses it. ~20× faster per
      admin call (~5ms vs ~100ms).
-   - **One-shot stderr warning** at first hybrid invocation when
+   - **One-shot stderr warning** at first clean-session invocation when
      fallback is in use, hinting at the install command. Suppress
      with `PYTEST_TESTCONTAINERS_QUIET=1`.
-   - **Optional extras** (`hybrid-postgres`, `hybrid-mysql`,
-     `hybrid-mongo`, aggregate `hybrid`) are convenience for users
+   - **Optional extras** (`clients-postgres`, `clients-mysql`,
+     `clients-mongo`, aggregate `clients`) are convenience for users
      who want fast paths in one install line, not a hard requirement.
    - **Redis is exec-only** (no auto-detect): `redis-cli FLUSHALL`
      via `container.exec(...)` is faster than the Python client for
      this single-shot use case, see §4.6 for cost analysis.
-   - **No `hybrid_strategy` config flag** in v1 — auto by import is
+   - **No `clean_session_strategy` config flag** in v1 — auto by import is
      deterministic and debuggable.
 
    Earlier resolution (lazy import + deferred `pytest.UsageError`)
@@ -1693,7 +1693,7 @@ anymore.
 
    **Proposal: `DbConnInfo`.** The fixture is about isolation, not
    about "give me a connection." Same logic for MySQL and Mongo
-   hybrids.
+   clean-session fixtures.
 
 4. **macOS port mapping IPv6 edge case.** On macOS with Docker
    Desktop, `NetworkSettings.Ports[*][0].HostIp` sometimes returns
@@ -1785,7 +1785,7 @@ Quick reality check on "is this duplicating something that exists?":
   pytest entry point. Confirmed via PyPI page + project README
   inspection. Users who want fixtures hand-roll them. We add the
   fixture layer, the maker convention, and the
-  ephemeral/hybrid variants.
+  function-scoped/clean-session variants.
 
 - **`pytest-docker-compose`** drives a `docker-compose.yml`. Different
   abstraction (compose) and different lifecycle model (per-test
@@ -1802,7 +1802,7 @@ Quick reality check on "is this duplicating something that exists?":
   the Tomodachi framework. Useful as prior art for the maker pattern;
   not a generic alternative.
 
-Conclusion: the niche "named pytest fixtures + maker pattern + hybrid
+Conclusion: the niche "named pytest fixtures + maker pattern + clean-session
 fresh-state fixtures on top of testcontainers-python" is unoccupied.
 The plugin's value is the boring stuff: shipping the ~150 lines every
 project reinvents, plus the educational scope-choice ladder (§6) that

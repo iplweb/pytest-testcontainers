@@ -3,9 +3,9 @@
 Three families per service:
 
 1. **Default session** (``tc_<svc>``) — one container per worker session.
-2. **Ephemeral function-scoped** (``tc_<svc>_ephem``) — one container per test.
-3. **Hybrid** (``tc_<svc>_db`` / ``tc_redis_clean``) — session container,
-   per-test fresh DB/keyspace.
+2. **Function-scoped** (``tc_<svc>_func``) — one container per test.
+3. **Clean-session** (``tc_<svc>_db`` / ``tc_redis_clean``) — session
+   container, per-test fresh DB/keyspace.
 
 Each fixture is replaced with a stub that raises :class:`pytest.UsageError`
 when ``--no-testcontainers`` (or ``PYTEST_TESTCONTAINERS=0``) is active.
@@ -19,8 +19,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pytest_testcontainers._internal.conn_info import DbConnInfo
-from pytest_testcontainers._internal.hybrid_admin import (
+from pytest_testcontainers._internal.clean_session_admin import (
     create_mysql_db,
     create_postgres_db,
     drop_mongo_db,
@@ -28,10 +27,11 @@ from pytest_testcontainers._internal.hybrid_admin import (
     drop_postgres_db,
     flush_redis,
 )
+from pytest_testcontainers._internal.conn_info import DbConnInfo
 from pytest_testcontainers._internal.port_resolver import normalize_host
 from pytest_testcontainers.errors import (
+    CleanSessionFixtureError,
     DockerNotRunningError,
-    HybridFixtureError,
     PytestTestcontainersError,
 )
 from pytest_testcontainers.makers import (
@@ -55,18 +55,18 @@ if TYPE_CHECKING:
 __all__ = [
     "tc_mongo",
     "tc_mongo_db",
-    "tc_mongo_ephem",
+    "tc_mongo_func",
     "tc_mysql",
     "tc_mysql_db",
-    "tc_mysql_ephem",
+    "tc_mysql_func",
     "tc_psql",
     "tc_psql_db",
-    "tc_psql_ephem",
+    "tc_psql_func",
     "tc_rabbitmq",
-    "tc_rabbitmq_ephem",
+    "tc_rabbitmq_func",
     "tc_redis",
     "tc_redis_clean",
-    "tc_redis_ephem",
+    "tc_redis_func",
 ]
 
 _DISABLED_MSG = (
@@ -114,7 +114,7 @@ def tc_psql() -> Iterator[PostgresContainer]:
 
 
 @pytest.fixture
-def tc_psql_ephem() -> Iterator[PostgresContainer]:
+def tc_psql_func() -> Iterator[PostgresContainer]:
     """Function-scoped fresh Postgres container — almost always wrong, see README."""
     _check_enabled()
     try:
@@ -140,7 +140,7 @@ def tc_psql_db(tc_psql: PostgresContainer) -> Iterator[DbConnInfo]:
     finally:
         try:
             drop_postgres_db(tc_psql, name)
-        except HybridFixtureError:
+        except CleanSessionFixtureError:
             import logging
 
             logging.getLogger("pytest_testcontainers").exception(
@@ -163,7 +163,7 @@ def tc_redis() -> Iterator[RedisContainer]:
 
 
 @pytest.fixture
-def tc_redis_ephem() -> Iterator[RedisContainer]:
+def tc_redis_func() -> Iterator[RedisContainer]:
     _check_enabled()
     try:
         with make_redis() as r:
@@ -193,7 +193,7 @@ def tc_mysql() -> Iterator[MySqlContainer]:
 
 
 @pytest.fixture
-def tc_mysql_ephem() -> Iterator[MySqlContainer]:
+def tc_mysql_func() -> Iterator[MySqlContainer]:
     _check_enabled()
     try:
         with make_mysql() as my:
@@ -217,7 +217,7 @@ def tc_mysql_db(tc_mysql: MySqlContainer) -> Iterator[DbConnInfo]:
     finally:
         try:
             drop_mysql_db(tc_mysql, name)
-        except HybridFixtureError:
+        except CleanSessionFixtureError:
             import logging
 
             logging.getLogger("pytest_testcontainers").exception(
@@ -240,7 +240,7 @@ def tc_mongo() -> Iterator[MongoDbContainer]:
 
 
 @pytest.fixture
-def tc_mongo_ephem() -> Iterator[MongoDbContainer]:
+def tc_mongo_func() -> Iterator[MongoDbContainer]:
     _check_enabled()
     try:
         with make_mongo() as m:
@@ -263,7 +263,7 @@ def tc_mongo_db(tc_mongo: MongoDbContainer) -> Iterator[DbConnInfo]:
     finally:
         try:
             drop_mongo_db(tc_mongo, name)
-        except HybridFixtureError:
+        except CleanSessionFixtureError:
             import logging
 
             logging.getLogger("pytest_testcontainers").exception(
@@ -273,7 +273,7 @@ def tc_mongo_db(tc_mongo: MongoDbContainer) -> Iterator[DbConnInfo]:
 
 
 # --------------------------------------------------------------------------
-# RabbitMQ — no hybrid (cleanup not obvious; user wires their own)
+# RabbitMQ — no clean-session fixture (cleanup not obvious; user wires their own)
 # --------------------------------------------------------------------------
 @pytest.fixture(scope="session")
 def tc_rabbitmq() -> Iterator[RabbitMqContainer]:
@@ -286,7 +286,7 @@ def tc_rabbitmq() -> Iterator[RabbitMqContainer]:
 
 
 @pytest.fixture
-def tc_rabbitmq_ephem() -> Iterator[RabbitMqContainer]:
+def tc_rabbitmq_func() -> Iterator[RabbitMqContainer]:
     _check_enabled()
     try:
         with make_rabbitmq() as rmq:

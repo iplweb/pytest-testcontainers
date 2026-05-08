@@ -2,8 +2,9 @@
 
 User-facing daemon/reuse/start failures are converted to
 ``pytest.UsageError`` at maker boundaries (see ``makers.py``).
-``HybridFixtureError`` is the only one preserved as-is for the user's
-test report — it is a test-time failure, not a setup misconfiguration.
+``CleanSessionFixtureError`` is the only one preserved as-is for the
+user's test report — it is a test-time failure, not a setup
+misconfiguration.
 """
 
 from __future__ import annotations
@@ -29,8 +30,8 @@ class ReuseConflictError(PytestTestcontainersError):
     """
 
 
-class HybridFixtureError(PytestTestcontainersError):
-    """A hybrid fixture failed to issue an admin command.
+class CleanSessionFixtureError(PytestTestcontainersError):
+    """A clean-session fixture failed to issue an admin command.
 
     Raised by ``tc_psql_db`` / ``tc_mysql_db`` / ``tc_mongo_db`` /
     ``tc_redis_clean`` from BOTH execution paths (Python client and

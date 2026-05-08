@@ -5,7 +5,7 @@ Each maker is a context manager wrapping the corresponding
 
 * daemon ping (cached on success);
 * reuse-name resolution + Ryuk disable + lookup-by-name choreography;
-* atexit safety net for ephemeral mode.
+* atexit safety net for one-shot (function-scoped) mode.
 
 The fixture layer (``fixtures.py``) is deliberately thin — it just calls
 these makers from inside ``@pytest.fixture`` functions.

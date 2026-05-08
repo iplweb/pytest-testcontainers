@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pytest_testcontainers._internal.conn_info import DbConnInfo
 from pytest_testcontainers.errors import (
+    CleanSessionFixtureError,
     ContainerStartError,
     DockerNotRunningError,
-    HybridFixtureError,
     PytestTestcontainersError,
     ReuseConflictError,
 )
@@ -20,10 +20,10 @@ from pytest_testcontainers.makers import (
 )
 
 __all__ = [
+    "CleanSessionFixtureError",
     "ContainerStartError",
     "DbConnInfo",
     "DockerNotRunningError",
-    "HybridFixtureError",
     "PytestTestcontainersError",
     "ReuseConflictError",
     "make_container",

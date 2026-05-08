@@ -41,7 +41,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         dest="testcontainers_no_reuse",
-        help="Force ephemeral mode regardless of env / config.",
+        help="Force fresh-each-run mode regardless of env / config.",
     )
     group.addoption(
         "--testcontainers-project",

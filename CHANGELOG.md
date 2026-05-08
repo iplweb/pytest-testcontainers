@@ -18,17 +18,18 @@ Initial release.
   upstream `testcontainers-python` class.
 - Session-scoped fixtures: `tc_psql`, `tc_redis`, `tc_mysql`, `tc_mongo`,
   `tc_rabbitmq`.
-- Function-scoped ephemeral fixtures: `tc_psql_ephem`, `tc_redis_ephem`,
-  `tc_mysql_ephem`, `tc_mongo_ephem`, `tc_rabbitmq_ephem`.
-- Hybrid fixtures (session container + per-test fresh state): `tc_psql_db`,
-  `tc_mysql_db`, `tc_mongo_db`, `tc_redis_clean`.
-- Hybrid admin commands run via Python client (`psycopg`/`pymysql`/`pymongo`)
-  when importable; `docker exec` fallback otherwise. Redis hybrid is exec-only.
+- Function-scoped fixtures: `tc_psql_func`, `tc_redis_func`, `tc_mysql_func`,
+  `tc_mongo_func`, `tc_rabbitmq_func`.
+- Clean-session fixtures (session container + per-test fresh state):
+  `tc_psql_db`, `tc_mysql_db`, `tc_mongo_db`, `tc_redis_clean`.
+- Clean-session admin commands run via Python client
+  (`psycopg`/`pymysql`/`pymongo`) when importable; `docker exec` fallback
+  otherwise. Redis clean-session is exec-only.
 - Reuse mode (`--testcontainers-reuse` / `PYTEST_TESTCONTAINERS_REUSE=1`):
   named per-worker containers (`<project>-tc-<service>-<worker_id>`), Ryuk
   disabled, port-conflict detection on stopped-container restart.
 - `--testcontainers-clean` to remove all `<project>-tc-*` containers.
 - Normalized `pytest.UsageError` when Docker daemon is unreachable.
 - `atexit` safety net for cleanup when `pytest_unconfigure` is skipped.
-- Optional dependency extras: `hybrid-postgres`, `hybrid-mysql`, `hybrid-mongo`,
-  aggregate `hybrid`.
+- Optional dependency extras: `clients-postgres`, `clients-mysql`,
+  `clients-mongo`, aggregate `clients`.

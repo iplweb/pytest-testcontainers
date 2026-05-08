@@ -1,11 +1,11 @@
-"""Sanity for the exception classes and the HybridFixtureError shape."""
+"""Sanity for the exception classes and the CleanSessionFixtureError shape."""
 
 from __future__ import annotations
 
 from pytest_testcontainers.errors import (
+    CleanSessionFixtureError,
     ContainerStartError,
     DockerNotRunningError,
-    HybridFixtureError,
     PytestTestcontainersError,
     ReuseConflictError,
 )
@@ -15,12 +15,12 @@ def test_hierarchy() -> None:
     assert issubclass(DockerNotRunningError, PytestTestcontainersError)
     assert issubclass(ContainerStartError, PytestTestcontainersError)
     assert issubclass(ReuseConflictError, PytestTestcontainersError)
-    assert issubclass(HybridFixtureError, PytestTestcontainersError)
+    assert issubclass(CleanSessionFixtureError, PytestTestcontainersError)
     assert issubclass(PytestTestcontainersError, RuntimeError)
 
 
-def test_hybrid_fixture_error_carries_fields() -> None:
-    exc = HybridFixtureError(
+def test_clean_session_fixture_error_carries_fields() -> None:
+    exc = CleanSessionFixtureError(
         "boom",
         command="CREATE DATABASE 'x'",
         stderr="connection refused",
@@ -35,8 +35,8 @@ def test_hybrid_fixture_error_carries_fields() -> None:
     assert "connection refused" in rendered
 
 
-def test_hybrid_fixture_error_with_no_exit_code_shows_no_field() -> None:
-    exc = HybridFixtureError(
+def test_clean_session_fixture_error_with_no_exit_code_shows_no_field() -> None:
+    exc = CleanSessionFixtureError(
         "client failed",
         command='CREATE DATABASE "x"',
         stderr="OperationalError(...)",

@@ -10,14 +10,14 @@ from __future__ import annotations
 import pytest
 
 from pytest_testcontainers import reuse
-from pytest_testcontainers._internal import docker_health, hybrid_admin
+from pytest_testcontainers._internal import clean_session_admin, docker_health
 
 
 @pytest.fixture(autouse=True)
 def _clean_state(monkeypatch: pytest.MonkeyPatch) -> None:
     reuse.reset_cli_state()
     docker_health.reset_cache()
-    hybrid_admin._reset_warnings_for_tests()
+    clean_session_admin._reset_warnings_for_tests()
     for var in (
         "PYTEST_TESTCONTAINERS",
         "PYTEST_TESTCONTAINERS_REUSE",
@@ -29,7 +29,7 @@ def _clean_state(monkeypatch: pytest.MonkeyPatch) -> None:
     yield
     reuse.reset_cli_state()
     docker_health.reset_cache()
-    hybrid_admin._reset_warnings_for_tests()
+    clean_session_admin._reset_warnings_for_tests()
 
 
 def _docker_available() -> bool:

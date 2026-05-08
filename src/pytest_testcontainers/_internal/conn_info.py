@@ -1,4 +1,4 @@
-"""``DbConnInfo`` — connection-info dataclass yielded by hybrid DB fixtures."""
+"""``DbConnInfo`` — connection-info dataclass yielded by clean-session DB fixtures."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DbConnInfo:
-    """Frozen bundle of connection coordinates for a hybrid DB fixture.
+    """Frozen bundle of connection coordinates for a clean-session DB fixture.
 
     Yielded by ``tc_psql_db`` / ``tc_mysql_db`` / ``tc_mongo_db``. The
     fixture is about isolation, not about handing back a live client —

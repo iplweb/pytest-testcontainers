@@ -1,4 +1,4 @@
-"""Admin commands behind hybrid fixtures.
+"""Admin commands behind clean-session fixtures.
 
 Each service gets a tiny dispatch table:
 
@@ -6,7 +6,7 @@ Each service gets a tiny dispatch table:
 * ``flush_redis`` (Redis only — exec-only by design)
 
 Both branches (Python client + ``docker exec``) raise the same
-:class:`HybridFixtureError` so user code sees one exception type.
+:class:`CleanSessionFixtureError` so user code sees one exception type.
 
 All commands invoked inside the container go through docker-py's
 ``exec_run`` with an argv list (never a shell string). Generated
@@ -23,7 +23,7 @@ import sys
 import threading
 from typing import TYPE_CHECKING, Any
 
-from pytest_testcontainers.errors import HybridFixtureError
+from pytest_testcontainers.errors import CleanSessionFixtureError
 
 if TYPE_CHECKING:
     from testcontainers.core.container import DockerContainer
@@ -51,11 +51,11 @@ def _maybe_warn_fallback(service: str, install_hint: str) -> None:
             return
         _warned_services.add(service)
     sys.stderr.write(
-        f"[pytest-testcontainers] {service} hybrid using docker exec fallback\n"
+        f"[pytest-testcontainers] {service} using docker exec fallback\n"
         f"(~100ms per admin call). For ~20x speedup install the client:\n"
         f"    pip install {install_hint}\n"
         f"or via the convenience extra:\n"
-        f"    pip install pytest-testcontainers[hybrid]\n"
+        f"    pip install pytest-testcontainers[clients]\n"
         f"Suppress this notice with PYTEST_TESTCONTAINERS_QUIET=1.\n"
     )
 
@@ -75,7 +75,7 @@ def _run_in_container(
     """Execute ``argv`` inside the container; return ``(exit_code, stdout, stderr)``."""
     raw_container = getattr(container, "_container", None)
     if raw_container is None:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             "container has no underlying docker-py reference",
             command=" ".join(shlex.quote(a) for a in argv),
             stderr="container._container is None",
@@ -115,7 +115,7 @@ def _pg_create_via_psycopg(container: DockerContainer, name: str) -> None:
         with psycopg.connect(autocommit=True, **kwargs) as conn, conn.cursor() as cur:
             cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
     except Exception as exc:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             f"CREATE DATABASE {name!r} failed via psycopg",
             command=f"CREATE DATABASE {name!r}",
             stderr=repr(exc),
@@ -134,7 +134,7 @@ def _pg_drop_via_psycopg(container: DockerContainer, name: str) -> None:
                 sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name))
             )
     except Exception as exc:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             f"DROP DATABASE {name!r} failed via psycopg",
             command=f"DROP DATABASE {name!r} WITH (FORCE)",
             stderr=repr(exc),
@@ -157,7 +157,7 @@ def _pg_run_in_container(container: DockerContainer, sql_text: str) -> None:
     env = {"PGPASSWORD": container.password}
     exit_code, stdout, stderr = _run_in_container(container, argv, env=env)
     if exit_code != 0:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             f"psql admin command failed (exit={exit_code})",
             command=sql_text,
             stderr=(stderr or stdout).strip(),
@@ -196,7 +196,7 @@ def _mysql_run_in_container(container: DockerContainer, sql_text: str) -> None:
     ]
     exit_code, stdout, stderr = _run_in_container(container, argv)
     if exit_code != 0:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             f"mysql admin command failed (exit={exit_code})",
             command=sql_text,
             stderr=(stderr or stdout).strip(),
@@ -218,7 +218,7 @@ def _mysql_run_pymysql(container: DockerContainer, sql_text: str) -> None:
             autocommit=True,
         )
     except Exception as exc:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             "mysql admin connect failed",
             command=sql_text,
             stderr=repr(exc),
@@ -228,7 +228,7 @@ def _mysql_run_pymysql(container: DockerContainer, sql_text: str) -> None:
         with conn.cursor() as cur:
             cur.execute(sql_text)
     except Exception as exc:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             "mysql admin command failed via pymysql",
             command=sql_text,
             stderr=repr(exc),
@@ -269,7 +269,7 @@ def _mongo_run_in_container_drop(container: DockerContainer, name: str) -> None:
     argv = ["mongosh", "--quiet", uri, "--eval", js]
     exit_code, stdout, stderr = _run_in_container(container, argv)
     if exit_code != 0:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             f"mongosh dropDatabase failed (exit={exit_code})",
             command=js,
             stderr=(stderr or stdout).strip(),
@@ -297,7 +297,7 @@ def _mongo_run_pymongo_drop(container: DockerContainer, name: str) -> None:
         finally:
             client.close()
     except Exception as exc:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             "mongo dropDatabase failed via pymongo",
             command=f"dropDatabase({name!r})",
             stderr=repr(exc),
@@ -321,7 +321,7 @@ def flush_redis(container: DockerContainer) -> None:
     argv = ["redis-cli", "FLUSHALL"]
     exit_code, stdout, stderr = _run_in_container(container, argv)
     if exit_code != 0:
-        raise HybridFixtureError(
+        raise CleanSessionFixtureError(
             f"redis-cli FLUSHALL failed (exit={exit_code})",
             command="redis-cli FLUSHALL",
             stderr=(stderr or stdout).strip(),
