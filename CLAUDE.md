@@ -108,6 +108,9 @@ CLI flag > env var > default. Implemented in `plugin.py` and read once into modu
 | `PYTEST_TESTCONTAINERS=0`                  | `--no-testcontainers`             |
 | `PYTEST_TESTCONTAINERS_REUSE=1`            | `--testcontainers-reuse` / `--testcontainers-no-reuse` |
 | `PYTEST_TESTCONTAINERS_PROJECT=NAME`       | `--testcontainers-project=NAME`   |
+| `PROJECT_NAME=NAME`                        | —                                 |
+| `COMPOSE_PROJECT_NAME=NAME`                | —                                 |
+| `PYTEST_TESTCONTAINERS_NAME_TEMPLATE=TPL`  | `--testcontainers-name-template=TPL` |
 | `PYTEST_TESTCONTAINERS_NO_DAEMON_CHECK=1`  | —                                 |
 | `PYTEST_TESTCONTAINERS_QUIET=1`            | —                                 |
 | —                                          | `--testcontainers-clean` (prune + exit 0) |

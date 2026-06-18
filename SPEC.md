@@ -973,6 +973,9 @@ No TOML config table. The handful of toggles read at maker-call time:
 | `PYTEST_TESTCONTAINERS=0` | Disable plugin fixtures only. Each `tc_*` fixture is replaced at registration time with a stub that raises `UsageError("--no-testcontainers; user expected to provide service externally")`. Maker functions called from non-pytest code (scripts, REPL — see §8.6) are unaffected. Accepts `0`/`false`/`no`. |
 | `PYTEST_TESTCONTAINERS_REUSE=1` | Reuse mode (§8.5). |
 | `PYTEST_TESTCONTAINERS_PROJECT` | Override the project name used in reuse names (§8.3). Default: derived from `pyproject.toml [project].name` if a `pyproject.toml` is reachable from `Path.cwd()` walking up; else `"pytest-tc"` with a one-shot stderr warning at first maker invocation (§8.3). |
+| `PROJECT_NAME` | Generic project-name source, below `PYTEST_TESTCONTAINERS_PROJECT` and above `COMPOSE_PROJECT_NAME` (§8.3). |
+| `COMPOSE_PROJECT_NAME` | docker-compose's standard project var, below `PROJECT_NAME` (§8.3). |
+| `PYTEST_TESTCONTAINERS_NAME_TEMPLATE` | Override the container-name template (§8.7). |
 | `PYTEST_TESTCONTAINERS_NO_DAEMON_CHECK=1` | Skip Docker `ping()` (rare, for debugging in environments where ping returns false-negatives). |
 | `PYTEST_TESTCONTAINERS_QUIET=1` | Suppress all one-shot stderr advisory notices (docker-exec fallback warning §4.6, project-name fallback warning §8.3). Errors still surface; only informational tips are silenced. |
 
@@ -984,6 +987,7 @@ No TOML config table. The handful of toggles read at maker-call time:
 | `--testcontainers-reuse` | Same as `PYTEST_TESTCONTAINERS_REUSE=1`. |
 | `--testcontainers-no-reuse` | Force function-scoped mode regardless of env. |
 | `--testcontainers-project=NAME` | Override `PYTEST_TESTCONTAINERS_PROJECT`. |
+| `--testcontainers-name-template=T` | Override the container-name template (§8.7). Highest precedence. |
 | `--testcontainers-clean` | Stop+remove all `<project>-tc-*` containers and exit pytest with code 0. |
 
 Precedence: CLI > env > defaults.
@@ -995,10 +999,13 @@ component resolved as:
 
 1. CLI `--testcontainers-project=NAME` if given.
 2. Env `PYTEST_TESTCONTAINERS_PROJECT` if set.
-3. `pyproject.toml [project].name` from the nearest `pyproject.toml`
-   walking up from `Path.cwd()`. We use `tomllib` (stdlib >=3.11; on
-   3.10 we depend on `tomli`).
-4. Fallback literal `"pytest-tc"`.
+3. Env `PROJECT_NAME` if set.
+4. Env `COMPOSE_PROJECT_NAME` if set.
+5. `pyproject.toml [project].name` from the nearest `pyproject.toml`
+   walking up from `Path.cwd()` (`tomllib` ≥3.11; `tomli` on 3.10).
+6. The cwd directory basename.
+7. Fallback literal `"pytest-tc"` (only when the cwd basename is empty,
+   i.e. the filesystem root) — this is what triggers the one-shot advisory.
 
 Justification for using `pyproject.toml [project].name` as default:
 - The project already names itself there for PyPI; reusing it avoids
@@ -1208,6 +1215,32 @@ with make_postgres(image="iplweb/bpp-dbserver:psql-16.13",
 ```
 
 This is fully supported and will not be broken in v1.x.
+
+### 8.7 Container name template
+
+Every container the plugin starts — in **both** default and reuse mode — is
+named by expanding a template and passing the result through `finalize_name`
+(§8.4 sanitization + 255-char trim/checksum).
+
+Default template: `{project}-tc-{service}-{branch}-{dirtag}-{worker}`.
+
+Placeholders: `{project}` (§8.3), `{service}` (slug), `{branch}`
+(`.git/HEAD`, no subprocess; detached → 12-char SHA; no repo → empty),
+`{dir}` (worktree-root basename), `{dirtag}` (8-hex blake2s of the
+worktree-root absolute path), `{worker}` (xdist id), `{rand}`
+(`secrets.token_hex(2)` — empty in reuse mode for byte-stable find-or-create;
+in default mode auto-appended when the template omits it). Empty placeholders
+collapse with no dangling dashes. An unknown placeholder raises
+`NameTemplateError`.
+
+Template precedence: `--testcontainers-name-template` >
+`PYTEST_TESTCONTAINERS_NAME_TEMPLATE` >
+`pyproject.toml [tool.pytest_testcontainers].name_template` > built-in default.
+
+Reuse-mode names are now per-(project, service, branch, directory, worker);
+switching branch/worktree creates a new container and leaves the old one until
+`--testcontainers-clean`. The maker `reuse_name=` argument still overrides the
+whole scheme (sanitized verbatim, not templated).
 
 ---
 
