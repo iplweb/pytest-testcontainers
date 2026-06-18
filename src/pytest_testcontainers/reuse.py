@@ -102,8 +102,12 @@ def worker_id() -> str:
 # --------------------------------------------------------------------------
 # Project name resolution
 # --------------------------------------------------------------------------
-def _read_pyproject_project_name(start: Path) -> str | None:
-    """Walk upward from ``start`` looking for a ``pyproject.toml`` with [project].name."""
+def _find_pyproject_data(start: Path) -> dict | None:
+    """Return parsed data of the nearest ``pyproject.toml`` walking up from ``start``.
+
+    The first ``pyproject.toml`` found wins (even if it lacks the field a
+    caller wants). Returns ``None`` when none is reachable or parsing fails.
+    """
     try:
         if sys.version_info >= (3, 11):
             import tomllib  # type: ignore[import-not-found]
@@ -119,14 +123,21 @@ def _read_pyproject_project_name(start: Path) -> str | None:
             continue
         try:
             with pyproject.open("rb") as fh:
-                data = tomllib.load(fh)
+                return tomllib.load(fh)
         except (OSError, ValueError):
             return None
-        name = data.get("project", {}).get("name")
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-        # First pyproject.toml found wins, even if it lacks [project].name
+    return None
+
+
+def _read_pyproject_project_name(start: Path) -> str | None:
+    """Read ``[project].name`` from the nearest ``pyproject.toml``."""
+    data = _find_pyproject_data(start)
+    if data is None:
         return None
+    project = data.get("project", {})
+    name = project.get("name") if isinstance(project, dict) else None
+    if isinstance(name, str) and name.strip():
+        return name.strip()
     return None
 
 
@@ -146,20 +157,33 @@ def _emit_fallback_warning() -> None:
 
 
 def project_name() -> str:
-    """Resolve the ``<project>`` component used in reuse names.
+    """Resolve the ``{project}`` component used in container names.
 
-    Precedence (CLI > env > pyproject > literal fallback) is enforced
-    here. Triggers the one-shot stderr fallback warning if and only if
-    we land on the literal fallback.
+    Precedence (most explicit first): CLI override, the plugin's own
+    ``PYTEST_TESTCONTAINERS_PROJECT``, the generic ``PROJECT_NAME`` then
+    ``COMPOSE_PROJECT_NAME`` env vars, ``pyproject.toml [project].name``, the
+    cwd basename, and finally the literal ``"pytest-tc"`` (which triggers the
+    one-shot stderr advisory).
     """
     if _cli_project:
         return _cli_project
     env = os.environ.get("PYTEST_TESTCONTAINERS_PROJECT")
     if env:
         return env
-    found = _read_pyproject_project_name(Path.cwd())
+    generic = os.environ.get("PROJECT_NAME") or os.environ.get("COMPOSE_PROJECT_NAME")
+    if generic:
+        return generic
+    return _project_name_from_dir(Path.cwd())
+
+
+def _project_name_from_dir(cwd: Path) -> str:
+    """File/basename/literal tail of :func:`project_name` (separately testable)."""
+    found = _read_pyproject_project_name(cwd)
     if found:
         return found
+    basename = cwd.name
+    if basename:
+        return basename
     _emit_fallback_warning()
     return "pytest-tc"
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -102,25 +103,71 @@ def test_project_name_walks_up_to_parent(tmp_cwd, monkeypatch: pytest.MonkeyPatc
     assert project_name() == "outer-project"
 
 
-def test_project_name_fallback_emits_warning(tmp_cwd, capsys: pytest.CaptureFixture[str]) -> None:
-    # tmp_cwd is empty — no pyproject.toml; CLI/env not set
-    assert project_name() == "pytest-tc"
-    captured = capsys.readouterr()
-    assert "fallback project name" in captured.err
-    # one-shot: second call does not warn
-    capsys.readouterr()
-    assert project_name() == "pytest-tc"
-    captured = capsys.readouterr()
-    assert captured.err == ""
+def test_project_name_PROJECT_NAME_env(monkeypatch: pytest.MonkeyPatch, tmp_cwd) -> None:
+    monkeypatch.setenv("PROJECT_NAME", "from-project-name")
+    assert project_name() == "from-project-name"
 
 
-def test_project_name_fallback_warning_suppressed_by_quiet(
+def test_project_name_COMPOSE_PROJECT_NAME_env(monkeypatch: pytest.MonkeyPatch, tmp_cwd) -> None:
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "from-compose")
+    assert project_name() == "from-compose"
+
+
+def test_project_name_PROJECT_NAME_beats_compose(monkeypatch: pytest.MonkeyPatch, tmp_cwd) -> None:
+    monkeypatch.setenv("PROJECT_NAME", "wins")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "loses")
+    assert project_name() == "wins"
+
+
+def test_project_name_plugin_env_beats_PROJECT_NAME(
+    monkeypatch: pytest.MonkeyPatch, tmp_cwd
+) -> None:
+    monkeypatch.setenv("PYTEST_TESTCONTAINERS_PROJECT", "plugin-env")
+    monkeypatch.setenv("PROJECT_NAME", "generic-env")
+    assert project_name() == "plugin-env"
+
+
+def test_project_name_PROJECT_NAME_beats_pyproject(
+    monkeypatch: pytest.MonkeyPatch, tmp_cwd
+) -> None:
+    (tmp_cwd / "pyproject.toml").write_text(
+        textwrap.dedent("""\
+            [project]
+            name = "from-pyproject"
+        """)
+    )
+    monkeypatch.setenv("PROJECT_NAME", "from-project-name")
+    assert project_name() == "from-project-name"
+
+
+def test_project_name_cwd_basename_fallback(
     tmp_cwd, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # No pyproject, no env: fall back to the cwd directory basename, no warning.
+    app = tmp_cwd / "myapp"
+    app.mkdir()
+    monkeypatch.chdir(app)
+    assert project_name() == "myapp"
+    assert capsys.readouterr().err == ""
+
+
+def test_project_name_literal_fallback_emits_warning(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Filesystem root has an empty basename → literal fallback + one-shot warning.
+    assert reuse._project_name_from_dir(Path("/")) == "pytest-tc"
+    assert "fallback project name" in capsys.readouterr().err
+    # one-shot: second call is silent
+    assert reuse._project_name_from_dir(Path("/")) == "pytest-tc"
+    assert capsys.readouterr().err == ""
+
+
+def test_project_name_literal_fallback_suppressed_by_quiet(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setenv("PYTEST_TESTCONTAINERS_QUIET", "1")
-    assert project_name() == "pytest-tc"
-    captured = capsys.readouterr()
-    assert captured.err == ""
+    assert reuse._project_name_from_dir(Path("/")) == "pytest-tc"
+    assert capsys.readouterr().err == ""
 
 
 def test_reuse_enabled_cli_wins(monkeypatch: pytest.MonkeyPatch) -> None:
