@@ -994,8 +994,8 @@ Precedence: CLI > env > defaults.
 
 ### 8.3 Project name resolution (for reuse names)
 
-The reuse name is `<project>-tc-<service>-<worker_id>`. Project
-component resolved as:
+The `{project}` placeholder in the container-name template (§8.7) resolves
+as:
 
 1. CLI `--testcontainers-project=NAME` if given.
 2. Env `PYTEST_TESTCONTAINERS_PROJECT` if set.
