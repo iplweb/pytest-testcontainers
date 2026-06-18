@@ -122,9 +122,9 @@ MIT, matching `testcontainers-python`. Confirmed before publishing.
   disabled, port-conflict detection on restart of stopped containers.
   Activated globally via env (`PYTEST_TESTCONTAINERS_REUSE=1`) or CLI
   (`--testcontainers-reuse`).
-- xdist-worker-aware reuse names:
-  `<project>-tc-<service>-<worker_id>`, where `worker_id` defaults to
-  `master` for non-xdist runs.
+- xdist-worker-aware container names: the worker id is one component
+  (`{worker}`) of the templated name (§8.7), defaulting to `master`
+  for non-xdist runs.
 - Normalized `pytest.UsageError` when Docker daemon is unreachable
   (§7).
 - `atexit` safety net for cleanup when `pytest_unconfigure` is skipped
@@ -934,16 +934,19 @@ fixture (which we don't redefine — it's already in pytest-xdist).
 
 ### 7.4 Per-worker reuse-mode names
 
-Reuse names are `<project>-tc-<service>-<worker_id>`. With `-n 8`:
+Container names embed the xdist worker id via the `{worker}` template
+component (§8.7), so each worker gets its own container. With `-n 8` the
+names differ only in that trailing component (the shared
+project/service/branch/dirtag prefix is shown here as `…`):
 
 ```
-myproject-tc-psql-gw0
-myproject-tc-psql-gw1
+…-gw0
+…-gw1
 …
-myproject-tc-psql-gw7
+…-gw7
 ```
 
-For non-xdist runs: `myproject-tc-psql-master`.
+For non-xdist runs it is `master` (e.g. `…-master`).
 
 Subtlety: a previous run with `-n 8 --testcontainers-reuse` leaves 8
 named containers. A subsequent `-n 4` reuses 4 of them and ignores
@@ -1093,22 +1096,23 @@ safe but pass through `_sanitize` defensively.
 `<worker_id>` from pytest-xdist is `master` or `gw<n>` (n in
 0..255), already safe.
 
-After composition the full name is bounded by Docker's 255-char
-limit. Components are not individually capped; if a user has an
-extreme `<project>` name and 8 workers' worth of long suffixes, the
-plugin truncates the composed string to 255 chars and appends a
-4-char hex hash of the original to keep uniqueness:
+After rendering, the full name is bounded by Docker's 255-char limit.
+Components are not individually capped; the plugin sanitizes the whole
+rendered name and, if it exceeds 255 chars, truncates to 246 and appends
+an 8-char hex hash of the *full untruncated* name to keep uniqueness
+(`finalize_name`):
 
 ```python
-def _compose(project: str, service: str, worker: str) -> str:
-    name = f"{project}-tc-{service}-{worker}"
-    if len(name) <= 255:
-        return name
-    h = hashlib.blake2s(name.encode(), digest_size=2).hexdigest()  # 4 chars
-    return name[:250] + "-" + h
+def finalize_name(name: str) -> str:
+    s = sanitize_component(name)
+    if len(s) <= 255:
+        return s
+    h = hashlib.blake2s(name.encode(), digest_size=4).hexdigest()  # 8 chars
+    return s[:246] + "-" + h
 ```
 
-In practice this never fires; included for robustness.
+Branch names make long names more likely than the old worker-only
+suffix, so this guard matters more than it once did.
 
 ### 8.5 Reuse mode mechanics
 
@@ -1184,8 +1188,8 @@ Behavior outside pytest:
   random `/tmp` dir, this falls back to literal `pytest-tc` — set
   `PYTEST_TESTCONTAINERS_PROJECT` if you care.
 - **Worker-id component** (§7.3) defaults to `master` outside
-  pytest-xdist (the env var is unset), so reuse names are
-  `<project>-tc-<service>-master`. A script and a pytest run on the
+  pytest-xdist (the env var is unset), so the name's `{worker}`
+  component is `master`. A script and a pytest run on the
   same machine without `-n` will share that container; with `-n N`
   they don't (workers use `gw0..gwN-1`). This is desired — it lets
   a `manage.py runserver` reuse the same container that `pytest`
@@ -1592,7 +1596,7 @@ machinery is no longer in #1.
 | `BPP_TESTCONTAINERS_REUSE=1` env | #1: `PYTEST_TESTCONTAINERS_REUSE=1` | |
 | Hard-coded PG image `iplweb/bpp_dbserver:psql-16.13` | User-side: `make_postgres(image=…)` in their fixture | Default in #1 is `postgres:16`. |
 | Hard-coded user `bpp` / pass `password` / db `bpp` | User-side: `make_postgres(username=…, password=…, database=…)` | Default in #1 is `test`/`test`/`test`. |
-| `_PG_NAME = "bpp-tc-pg"` / `_REDIS_NAME = "bpp-tc-redis"` | #1: `<project>-tc-<service>-<worker_id>` (§8.3) | Project name resolved from `pyproject.toml [project].name`. |
+| `_PG_NAME = "bpp-tc-pg"` / `_REDIS_NAME = "bpp-tc-redis"` | #1: templated name, default `{project}-tc-{service}-{branch}-{dirtag}-{worker}` (§8.7) | Project name resolved from `pyproject.toml [project].name`. |
 | `os.environ["DJANGO_BPP_DB_HOST"] = …` (5 vars) | #2 (`pytest-testcontainers-django`) | This was the eager-start env-injection. Out of #1 entirely. |
 | `os.environ["DJANGO_BPP_TEST_TEMPLATE"] = "bpp"` | #3 (`django-pg-baseline`) | TEMPLATE wiring is Django-creation-machinery layer. |
 | `os.environ["DJANGO_BPP_SKIP_DOTENV"] = "1"` | #2 | Suppressing `.env` re-read after env injection — Django-specific. |
