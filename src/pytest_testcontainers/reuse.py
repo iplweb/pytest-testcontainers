@@ -220,7 +220,7 @@ def sanitize_component(component: str) -> str:
 
 DEFAULT_NAME_TEMPLATE = "{project}-tc-{service}-{branch}-{dirtag}-{worker}"
 VALID_PLACEHOLDERS = frozenset({"project", "service", "branch", "dir", "dirtag", "worker", "rand"})
-_PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
+_PLACEHOLDER_RE = re.compile(r"\{([^}]+)\}")
 
 
 def _read_pyproject_name_template(start: Path) -> str | None:

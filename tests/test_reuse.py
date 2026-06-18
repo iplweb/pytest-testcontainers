@@ -214,6 +214,17 @@ def test_render_unknown_placeholder_raises() -> None:
     assert "project" in str(exc.value)  # message lists valid placeholders
 
 
+def test_render_rejects_miscased_placeholder() -> None:
+    with pytest.raises(NameTemplateError) as exc:
+        reuse._render_template("{Project}-{service}", {"project": "p", "service": "s"})
+    assert "Project" in str(exc.value)
+
+
+def test_render_rejects_placeholder_with_digit() -> None:
+    with pytest.raises(NameTemplateError):
+        reuse._render_template("{dir2}", {"project": "p"})
+
+
 def test_finalize_collapses_empty_branch() -> None:
     # An empty {branch} leaves a double dash that finalize collapses cleanly.
     rendered = reuse._render_template(
