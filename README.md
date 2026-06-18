@@ -507,9 +507,9 @@ default we develop against.
 
 ### pytest
 
-| pytest | 7.x | 8.x |
-|--------|:---:|:---:|
-|        | ✓   | ✓   |
+| pytest | 7.x | 8.x | 9.x |
+|--------|:---:|:---:|:---:|
+|        | ✓   | ✓   | ✓   |
 
 Tested separately in CI; floor is `pytest>=7.4`.
 

@@ -36,6 +36,10 @@ uv run pytest tests/ -v
 # Unit-only (skips anything marked docker_required) — matches the CI "unit-tests" job
 uv run pytest tests/ -m "not docker_required" -v
 
+# Local pytest-version matrix (7.x / 8.x / 9.x) — mirrors the CI "unit-tests" job
+uv run nox                                   # all majors
+uv run nox -s "tests(pytest_major='9')"      # one major
+
 # A single test
 uv run pytest tests/test_makers_postgres.py::test_specific_thing -v
 
@@ -114,7 +118,7 @@ CLI flag > env var > default. Implemented in `plugin.py` and read once into modu
 
 ## Supported versions
 
-Python 3.10–3.13. pytest 7 and 8 (CI runs both as a matrix). testcontainers ≥ 4.7 (modern `wait_strategies` API), docker-py ≥ 6.1 (needs `containers.exec_run(demux=True)` and `docker.errors.NotFound`). Don't add code paths that require newer-than-floor versions of these.
+Python 3.10–3.13. pytest 7, 8, and 9 (CI runs all three as a matrix; `noxfile.py` runs the same matrix locally). testcontainers ≥ 4.7 (modern `wait_strategies` API), docker-py ≥ 6.1 (needs `containers.exec_run(demux=True)` and `docker.errors.NotFound`). Don't add code paths that require newer-than-floor versions of these.
 
 ## Conventions
 

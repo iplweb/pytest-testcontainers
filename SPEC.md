@@ -1325,7 +1325,7 @@ Runtime (in `pyproject.toml`):
 [project]
 requires-python = ">=3.10"
 dependencies = [
-    "pytest >=7.4,<9",
+    "pytest >=7.4,<10",
     "testcontainers >=4.7,<5",   # 4.7 ships current wait_strategies API
     "docker >=6.1",              # docker-py for daemon ping +
                                  # reuse-by-name lookup. testcontainers-python
