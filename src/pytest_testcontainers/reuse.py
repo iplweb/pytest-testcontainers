@@ -11,14 +11,19 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import secrets
 import sys
 import threading
 from pathlib import Path
+
+from pytest_testcontainers._internal import git_identity
+from pytest_testcontainers.errors import NameTemplateError
 
 # CLI overrides arrive at parse time and live process-wide.
 _cli_state_lock = threading.Lock()
 _cli_project: str | None = None
 _cli_reuse: bool | None = None  # tri-state: None=unset, True=force, False=force off
+_cli_name_template: str | None = None
 
 # One-shot fallback warning gate (see §8.3 / §8.1).
 _fallback_warned: bool = False
@@ -39,14 +44,21 @@ def set_cli_reuse(value: bool | None) -> None:
         _cli_reuse = value
 
 
+def set_cli_name_template(value: str | None) -> None:
+    global _cli_name_template
+    with _cli_state_lock:
+        _cli_name_template = value
+
+
 def reset_cli_state() -> None:
     """Used in tests to keep cross-test state from leaking."""
-    global _cli_project, _cli_reuse, _cli_disabled, _fallback_warned
+    global _cli_project, _cli_reuse, _cli_disabled, _fallback_warned, _cli_name_template
     with _cli_state_lock:
         _cli_project = None
         _cli_reuse = None
         _cli_disabled = None
         _fallback_warned = False
+        _cli_name_template = None
 
 
 # --------------------------------------------------------------------------
@@ -206,28 +218,95 @@ def sanitize_component(component: str) -> str:
     return s or "x"
 
 
-def compose_name(project: str, service: str, worker: str) -> str:
-    """Compose the full ``<project>-tc-<service>-<worker>`` reuse name.
-
-    Truncates to 255 chars and appends a 4-char hash if the natural
-    composition would overflow Docker's container-name limit.
-    """
-    p = sanitize_component(project)
-    s = sanitize_component(service)
-    w = sanitize_component(worker)
-    name = f"{p}-tc-{s}-{w}"
-    if len(name) <= 255:
-        return name
-    h = hashlib.blake2s(name.encode(), digest_size=2).hexdigest()
-    return name[:250] + "-" + h
+DEFAULT_NAME_TEMPLATE = "{project}-tc-{service}-{branch}-{dirtag}-{worker}"
+VALID_PLACEHOLDERS = frozenset({"project", "service", "branch", "dir", "dirtag", "worker", "rand"})
+_PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
 
 
-def reuse_name_for(service: str, *, override: str | None = None) -> str:
-    """Compute the reuse name for ``service`` (already a short slug).
+def _read_pyproject_name_template(start: Path) -> str | None:
+    """Read ``[tool.pytest_testcontainers].name_template`` from pyproject."""
+    data = _find_pyproject_data(start)
+    if data is None:
+        return None
+    tool = data.get("tool", {})
+    table = tool.get("pytest_testcontainers", {}) if isinstance(tool, dict) else {}
+    template = table.get("name_template") if isinstance(table, dict) else None
+    if isinstance(template, str) and template.strip():
+        return template.strip()
+    return None
 
-    If ``override`` is given (the user passed ``reuse_name=`` to a maker),
-    it takes precedence verbatim — sanitized, but not composed.
+
+def name_template() -> str:
+    """Resolve the container-name template (CLI > env > pyproject > default)."""
+    if _cli_name_template:
+        return _cli_name_template
+    env = os.environ.get("PYTEST_TESTCONTAINERS_NAME_TEMPLATE")
+    if env:
+        return env
+    found = _read_pyproject_name_template(Path.cwd())
+    if found:
+        return found
+    return DEFAULT_NAME_TEMPLATE
+
+
+def _render_template(template: str, values: dict[str, str]) -> str:
+    """Substitute ``{placeholder}`` tokens; unknown placeholder → error."""
+
+    def _replace(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key not in values:
+            valid = ", ".join("{" + p + "}" for p in sorted(VALID_PLACEHOLDERS))
+            raise NameTemplateError(
+                f"unknown placeholder {{{key}}} in container name template; "
+                f"valid placeholders are: {valid}"
+            )
+        return values[key]
+
+    return _PLACEHOLDER_RE.sub(_replace, template)
+
+
+def _build_values(service: str, *, rand: str) -> dict[str, str]:
+    """Resolve every placeholder value for the current cwd / git state."""
+    cwd = Path.cwd()
+    root = git_identity.worktree_root(cwd)
+    dirtag = hashlib.blake2s(str(root).encode(), digest_size=4).hexdigest()
+    return {
+        "project": project_name(),
+        "service": service,
+        "branch": git_identity.current_branch(cwd) or "",
+        "dir": root.name,
+        "dirtag": dirtag,
+        "worker": worker_id(),
+        "rand": rand,
+    }
+
+
+def finalize_name(name: str) -> str:
+    """Make ``name`` Docker-safe and ≤255 chars (deterministic trim+checksum)."""
+    sanitized = sanitize_component(name)
+    if len(sanitized) <= 255:
+        return sanitized
+    digest = hashlib.blake2s(name.encode(), digest_size=4).hexdigest()
+    return sanitized[:246] + "-" + digest
+
+
+def container_name_for(
+    service: str, *, override: str | None = None, reuse_mode: bool = True
+) -> str:
+    """Compute the container name for ``service``.
+
+    ``override`` (the maker ``reuse_name=`` argument) wins verbatim, sanitized
+    but not templated. Otherwise the configured template is rendered and
+    finalized. In reuse mode ``{rand}`` is empty so the name is byte-stable for
+    find-or-create; in default mode a fresh ``secrets.token_hex(2)`` is used
+    (auto-appended when the template does not already contain ``{rand}``) so
+    overlapping or leaked runs never collide.
     """
     if override is not None:
         return sanitize_component(override)
-    return compose_name(project_name(), service, worker_id())
+    template = name_template()
+    rand = "" if reuse_mode else secrets.token_hex(2)
+    rendered = _render_template(template, _build_values(service, rand=rand))
+    if not reuse_mode and "{rand}" not in template:
+        rendered = f"{rendered}-{rand}"
+    return finalize_name(rendered)

@@ -27,8 +27,8 @@ from pytest_testcontainers.containers import (
     start_or_raise,
 )
 from pytest_testcontainers.reuse import (
+    container_name_for,
     is_reuse_enabled,
-    reuse_name_for,
     sanitize_component,
 )
 
@@ -76,7 +76,7 @@ def _make_generic(
     check_docker_daemon()
 
     reuse_on = is_reuse_enabled() or reuse_name is not None
-    name = reuse_name_for(service_slug, override=reuse_name) if reuse_on else None
+    name = container_name_for(service_slug, override=reuse_name, reuse_mode=reuse_on)
 
     if reuse_on:
         disable_ryuk_once()
@@ -84,7 +84,7 @@ def _make_generic(
     instance: DockerContainer | None = None
     is_bound_to_existing = False
 
-    if reuse_on and name is not None:
+    if reuse_on:
         existing = find_existing_container(name)
         if existing is not None:
             status = getattr(existing, "status", "")
@@ -106,8 +106,7 @@ def _make_generic(
 
     if instance is None:
         instance = container_cls(*constructor_args, **constructor_kwargs)
-        if name is not None:
-            instance.with_name(name)
+        instance.with_name(name)
         _apply_env(instance, env)
 
         image_for_msg = constructor_kwargs.get("image") or (
