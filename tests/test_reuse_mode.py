@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from pytest_testcontainers import make_redis
-from pytest_testcontainers.reuse import reuse_name_for
+from pytest_testcontainers.reuse import container_name_for
 
 pytestmark = pytest.mark.docker_required
 
@@ -30,7 +30,7 @@ def _remove_named(name: str) -> None:
 def test_reuse_keeps_same_container_id(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PYTEST_TESTCONTAINERS_REUSE", "1")
     monkeypatch.setenv("PYTEST_TESTCONTAINERS_PROJECT", "ptc-smoke")
-    name = reuse_name_for("redis")
+    name = container_name_for("redis")
     _remove_named(name)
     try:
         with make_redis() as r1:

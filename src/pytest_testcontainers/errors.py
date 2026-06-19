@@ -30,6 +30,14 @@ class ReuseConflictError(PytestTestcontainersError):
     """
 
 
+class NameTemplateError(PytestTestcontainersError):
+    """The configured container-name template referenced an unknown placeholder.
+
+    Raised at name-resolution time (during fixture/maker setup, before any
+    container starts). The message enumerates the valid placeholders.
+    """
+
+
 class CleanSessionFixtureError(PytestTestcontainersError):
     """A clean-session fixture failed to issue an admin command.
 

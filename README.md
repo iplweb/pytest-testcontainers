@@ -383,6 +383,53 @@ Every plumbing concern — daemon ping, reuse name, atexit cleanup,
 Ryuk-disable-when-reuse — applies. `args`/`kwargs` go to the upstream
 constructor verbatim.
 
+## Container names
+
+Every container the plugin starts is named so you can find it in `docker ps`
+(previously default-mode containers got random Docker names like
+`heuristic_cannon`). The name is built from a template:
+
+```
+{project}-tc-{service}-{branch}-{dirtag}-{worker}
+```
+
+e.g. `myproj-tc-psql-feature-x-3f9ac1b2-master`.
+
+Placeholders:
+
+| Placeholder | Meaning |
+|-------------|---------|
+| `{project}` | Project name (see precedence below). |
+| `{service}` | Service slug (`psql`, `redis`, `mysql`, `mongo`, `rabbitmq`, or derived from the container class). |
+| `{branch}`  | Current git branch (read from `.git/HEAD`, no subprocess). Detached HEAD → 12-char commit SHA. No repo → empty. |
+| `{dir}`     | Worktree-root basename. Readable, not collision-proof. |
+| `{dirtag}`  | 8-hex hash of the worktree-root absolute path. Disambiguates the same branch checked out in two directories. |
+| `{worker}`  | xdist worker id (`master` when not under xdist). |
+| `{rand}`    | 4 random hex chars. Empty in reuse mode; auto-appended in default mode when the template omits it. |
+
+Empty placeholders collapse cleanly (no `--`, no dangling dashes). Names are
+sanitized to Docker's charset and capped at 255 chars (trim + checksum).
+
+Override the template (CLI > env > pyproject > built-in default):
+
+```bash
+pytest --testcontainers-name-template='{project}-{service}-{branch}'
+# or
+export PYTEST_TESTCONTAINERS_NAME_TEMPLATE='{project}-{service}-{branch}'
+```
+
+```toml
+# pyproject.toml
+[tool.pytest_testcontainers]
+name_template = "{project}-{service}-{branch}"
+```
+
+The `{project}` component resolves as: `--testcontainers-project` →
+`PYTEST_TESTCONTAINERS_PROJECT` → `PROJECT_NAME` → `COMPOSE_PROJECT_NAME` →
+`pyproject.toml [project].name` → cwd basename.
+
+An unknown placeholder raises `NameTemplateError` listing the valid ones.
+
 ## Reuse mode
 
 For iterative dev loops where you don't want to pay container-start
@@ -395,9 +442,11 @@ pytest --testcontainers-reuse tests/
 ```
 
 What changes:
-- Each container gets a stable name `<project>-tc-<service>-<worker>`
-  (e.g. `myproject-tc-psql-master`). The project name comes from
-  `pyproject.toml [project].name`.
+- Each container gets a stable, identifiable name from the template
+  (default `{project}-tc-{service}-{branch}-{dirtag}-{worker}`), so reuse is
+  scoped per project **and** per git branch **and** per directory. Switching
+  branch or worktree yields a *new* container; the previous one lingers
+  (stopped) until you run `pytest --testcontainers-clean`.
 - Ryuk (testcontainers' reaper) is disabled so the named containers
   survive between runs.
 - On the next run we look up by name — found-and-running gets bound
@@ -419,6 +468,10 @@ own `PYTEST_TESTCONTAINERS_PROJECT` to avoid name collisions. The
 plugin doesn't auto-namespace by PID — that would defeat the "reuse
 across runs" point.
 
+> **Upgrading from 0.1.0:** reuse-mode names now encode branch + directory, so
+> containers reused from an older version are not found by name — a fresh one
+> is created and the old one lingers until `pytest --testcontainers-clean`.
+
 ## Configuration
 
 No TOML config table. The handful of toggles read at maker-call time:
@@ -430,6 +483,9 @@ No TOML config table. The handful of toggles read at maker-call time:
 | `PYTEST_TESTCONTAINERS=0`                 | Disable plugin fixtures (raise UsageError). |
 | `PYTEST_TESTCONTAINERS_REUSE=1`           | Reuse named containers across runs.         |
 | `PYTEST_TESTCONTAINERS_PROJECT=<name>`    | Override the `<project>` part of reuse names. |
+| `PROJECT_NAME=<name>`                     | Generic project-name source (below the plugin var). |
+| `COMPOSE_PROJECT_NAME=<name>`             | docker-compose's project var (below `PROJECT_NAME`). |
+| `PYTEST_TESTCONTAINERS_NAME_TEMPLATE=<t>` | Override the container-name template.       |
 | `PYTEST_TESTCONTAINERS_NO_DAEMON_CHECK=1` | Skip Docker daemon ping (rare).             |
 | `PYTEST_TESTCONTAINERS_QUIET=1`           | Suppress one-shot informational advisories. |
 
@@ -441,6 +497,7 @@ No TOML config table. The handful of toggles read at maker-call time:
 | `--testcontainers-reuse`        | `PYTEST_TESTCONTAINERS_REUSE=1`      |
 | `--testcontainers-no-reuse`     | force fresh-each-run mode                 |
 | `--testcontainers-project=NAME` | `PYTEST_TESTCONTAINERS_PROJECT=NAME` |
+| `--testcontainers-name-template=T` | `PYTEST_TESTCONTAINERS_NAME_TEMPLATE=T` |
 | `--testcontainers-clean`        | prune `<project>-tc-*` and exit 0    |
 
 CLI > env > defaults.

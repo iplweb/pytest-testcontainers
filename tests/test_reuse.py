@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import re
 import textwrap
+from pathlib import Path
 
 import pytest
 
 from pytest_testcontainers import reuse
+from pytest_testcontainers.errors import NameTemplateError
 from pytest_testcontainers.reuse import (
-    compose_name,
+    DEFAULT_NAME_TEMPLATE,
+    container_name_for,
+    finalize_name,
     is_plugin_disabled,
     is_reuse_enabled,
+    name_template,
     project_name,
-    reuse_name_for,
     sanitize_component,
     worker_id,
 )
@@ -35,21 +40,6 @@ from pytest_testcontainers.reuse import (
 )
 def test_sanitize_component(raw: str, expected: str) -> None:
     assert sanitize_component(raw) == expected
-
-
-def test_compose_name_short() -> None:
-    assert compose_name("myproject", "psql", "master") == "myproject-tc-psql-master"
-    assert compose_name("myproject", "redis", "gw0") == "myproject-tc-redis-gw0"
-
-
-def test_compose_name_truncates_when_long() -> None:
-    long_project = "x" * 300
-    out = compose_name(long_project, "psql", "master")
-    assert len(out) <= 255
-    assert out.startswith("x")
-    assert "-tc-" not in out[-30:] or out.endswith(
-        ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f")
-    )
 
 
 def test_worker_id_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -102,25 +92,71 @@ def test_project_name_walks_up_to_parent(tmp_cwd, monkeypatch: pytest.MonkeyPatc
     assert project_name() == "outer-project"
 
 
-def test_project_name_fallback_emits_warning(tmp_cwd, capsys: pytest.CaptureFixture[str]) -> None:
-    # tmp_cwd is empty — no pyproject.toml; CLI/env not set
-    assert project_name() == "pytest-tc"
-    captured = capsys.readouterr()
-    assert "fallback project name" in captured.err
-    # one-shot: second call does not warn
-    capsys.readouterr()
-    assert project_name() == "pytest-tc"
-    captured = capsys.readouterr()
-    assert captured.err == ""
+def test_project_name_PROJECT_NAME_env(monkeypatch: pytest.MonkeyPatch, tmp_cwd) -> None:
+    monkeypatch.setenv("PROJECT_NAME", "from-project-name")
+    assert project_name() == "from-project-name"
 
 
-def test_project_name_fallback_warning_suppressed_by_quiet(
+def test_project_name_COMPOSE_PROJECT_NAME_env(monkeypatch: pytest.MonkeyPatch, tmp_cwd) -> None:
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "from-compose")
+    assert project_name() == "from-compose"
+
+
+def test_project_name_PROJECT_NAME_beats_compose(monkeypatch: pytest.MonkeyPatch, tmp_cwd) -> None:
+    monkeypatch.setenv("PROJECT_NAME", "wins")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "loses")
+    assert project_name() == "wins"
+
+
+def test_project_name_plugin_env_beats_PROJECT_NAME(
+    monkeypatch: pytest.MonkeyPatch, tmp_cwd
+) -> None:
+    monkeypatch.setenv("PYTEST_TESTCONTAINERS_PROJECT", "plugin-env")
+    monkeypatch.setenv("PROJECT_NAME", "generic-env")
+    assert project_name() == "plugin-env"
+
+
+def test_project_name_PROJECT_NAME_beats_pyproject(
+    monkeypatch: pytest.MonkeyPatch, tmp_cwd
+) -> None:
+    (tmp_cwd / "pyproject.toml").write_text(
+        textwrap.dedent("""\
+            [project]
+            name = "from-pyproject"
+        """)
+    )
+    monkeypatch.setenv("PROJECT_NAME", "from-project-name")
+    assert project_name() == "from-project-name"
+
+
+def test_project_name_cwd_basename_fallback(
     tmp_cwd, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # No pyproject, no env: fall back to the cwd directory basename, no warning.
+    app = tmp_cwd / "myapp"
+    app.mkdir()
+    monkeypatch.chdir(app)
+    assert project_name() == "myapp"
+    assert capsys.readouterr().err == ""
+
+
+def test_project_name_literal_fallback_emits_warning(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Filesystem root has an empty basename → literal fallback + one-shot warning.
+    assert reuse._project_name_from_dir(Path("/")) == "pytest-tc"
+    assert "fallback project name" in capsys.readouterr().err
+    # one-shot: second call is silent
+    assert reuse._project_name_from_dir(Path("/")) == "pytest-tc"
+    assert capsys.readouterr().err == ""
+
+
+def test_project_name_literal_fallback_suppressed_by_quiet(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setenv("PYTEST_TESTCONTAINERS_QUIET", "1")
-    assert project_name() == "pytest-tc"
-    captured = capsys.readouterr()
-    assert captured.err == ""
+    assert reuse._project_name_from_dir(Path("/")) == "pytest-tc"
+    assert capsys.readouterr().err == ""
 
 
 def test_reuse_enabled_cli_wins(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -152,28 +188,145 @@ def test_plugin_enabled_by_default() -> None:
     assert is_plugin_disabled() is False
 
 
-def test_reuse_name_for_uses_override(tmp_cwd) -> None:
-    name = reuse_name_for("psql", override="MY_NAME")
-    assert name == "my_name"
+# --- template rendering -------------------------------------------------
 
 
-def test_reuse_name_for_composes(tmp_cwd, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_render_expands_all_placeholders() -> None:
+    values = {
+        "project": "myproj",
+        "service": "psql",
+        "branch": "feature-x",
+        "dir": "checkout",
+        "dirtag": "3f9ac1b2",
+        "worker": "gw0",
+        "rand": "ab12",
+    }
+    out = reuse._render_template(
+        "{project}-tc-{service}-{branch}-{dir}-{dirtag}-{worker}-{rand}", values
+    )
+    assert out == "myproj-tc-psql-feature-x-checkout-3f9ac1b2-gw0-ab12"
+
+
+def test_render_unknown_placeholder_raises() -> None:
+    with pytest.raises(NameTemplateError) as exc:
+        reuse._render_template("{project}-{nope}", {"project": "p"})
+    assert "nope" in str(exc.value)
+    assert "project" in str(exc.value)  # message lists valid placeholders
+
+
+def test_render_rejects_miscased_placeholder() -> None:
+    with pytest.raises(NameTemplateError) as exc:
+        reuse._render_template("{Project}-{service}", {"project": "p", "service": "s"})
+    assert "Project" in str(exc.value)
+
+
+def test_render_rejects_placeholder_with_digit() -> None:
+    with pytest.raises(NameTemplateError):
+        reuse._render_template("{dir2}", {"project": "p"})
+
+
+def test_finalize_collapses_empty_branch() -> None:
+    # An empty {branch} leaves a double dash that finalize collapses cleanly.
+    rendered = reuse._render_template(
+        DEFAULT_NAME_TEMPLATE,
+        {
+            "project": "myproj",
+            "service": "psql",
+            "branch": "",
+            "dir": "d",
+            "dirtag": "3f9ac1b2",
+            "worker": "master",
+            "rand": "",
+        },
+    )
+    assert finalize_name(rendered) == "myproj-tc-psql-3f9ac1b2-master"
+
+
+# --- finalize_name length safety ---------------------------------------
+
+
+def test_finalize_name_short_passthrough() -> None:
+    assert finalize_name("MyProj-TC-Psql-Master") == "myproj-tc-psql-master"
+
+
+def test_finalize_name_caps_at_255() -> None:
+    out = finalize_name("x" * 400)
+    assert len(out) <= 255
+
+
+def test_finalize_name_deterministic() -> None:
+    long = "y" * 400
+    assert finalize_name(long) == finalize_name(long)
+
+
+def test_finalize_name_distinguishes_tail() -> None:
+    base = "z" * 300
+    a = finalize_name(base + "-alpha")
+    b = finalize_name(base + "-omega")
+    assert a != b  # hash over the full name, not just the kept prefix
+
+
+# --- name_template precedence ------------------------------------------
+
+
+def test_name_template_default(tmp_cwd) -> None:
+    assert name_template() == DEFAULT_NAME_TEMPLATE
+
+
+def test_name_template_env_over_pyproject(tmp_cwd, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_cwd / "pyproject.toml").write_text(
         textwrap.dedent("""\
-            [project]
-            name = "MyProj"
+            [tool.pytest_testcontainers]
+            name_template = "{service}-from-pyproject"
         """)
     )
+    monkeypatch.setenv("PYTEST_TESTCONTAINERS_NAME_TEMPLATE", "{service}-from-env")
+    assert name_template() == "{service}-from-env"
+
+
+def test_name_template_pyproject(tmp_cwd) -> None:
+    (tmp_cwd / "pyproject.toml").write_text(
+        textwrap.dedent("""\
+            [tool.pytest_testcontainers]
+            name_template = "{service}-from-pyproject"
+        """)
+    )
+    assert name_template() == "{service}-from-pyproject"
+
+
+def test_name_template_cli_wins(tmp_cwd, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PYTEST_TESTCONTAINERS_NAME_TEMPLATE", "{service}-env")
+    reuse.set_cli_name_template("{service}-cli")
+    assert name_template() == "{service}-cli"
+
+
+# --- container_name_for end to end -------------------------------------
+
+
+def test_container_name_for_override(tmp_cwd) -> None:
+    assert container_name_for("psql", override="MY_NAME") == "my_name"
+
+
+def test_container_name_for_reuse_is_byte_stable(tmp_cwd, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PYTEST_TESTCONTAINERS_NAME_TEMPLATE", "{project}-tc-{service}-{worker}")
+    monkeypatch.setenv("PROJECT_NAME", "myproj")
     monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
-    assert reuse_name_for("psql") == "myproj-tc-psql-master"
+    first = container_name_for("psql", reuse_mode=True)
+    second = container_name_for("psql", reuse_mode=True)
+    assert first == second == "myproj-tc-psql-master"
 
 
-def test_reuse_name_for_with_xdist_worker(tmp_cwd, monkeypatch: pytest.MonkeyPatch) -> None:
-    (tmp_cwd / "pyproject.toml").write_text(
-        textwrap.dedent("""\
-            [project]
-            name = "MyProj"
-        """)
-    )
-    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw7")
-    assert reuse_name_for("redis") == "myproj-tc-redis-gw7"
+def test_container_name_for_default_appends_rand(tmp_cwd, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PYTEST_TESTCONTAINERS_NAME_TEMPLATE", "{project}-tc-{service}-{worker}")
+    monkeypatch.setenv("PROJECT_NAME", "myproj")
+    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
+    name = container_name_for("psql", reuse_mode=False)
+    assert re.match(r"^myproj-tc-psql-master-[0-9a-f]{4}$", name)
+
+
+def test_container_name_for_explicit_rand_not_double_appended(
+    tmp_cwd, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PYTEST_TESTCONTAINERS_NAME_TEMPLATE", "{service}-{rand}")
+    name = container_name_for("psql", reuse_mode=False)
+    assert re.match(r"^psql-[0-9a-f]{4}$", name)  # exactly one rand token

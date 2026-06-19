@@ -7,6 +7,7 @@ from pytest_testcontainers.errors import (
     CleanSessionFixtureError,
     ContainerStartError,
     DockerNotRunningError,
+    NameTemplateError,
     PytestTestcontainersError,
     ReuseConflictError,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "ContainerStartError",
     "DbConnInfo",
     "DockerNotRunningError",
+    "NameTemplateError",
     "PytestTestcontainersError",
     "ReuseConflictError",
     "make_container",

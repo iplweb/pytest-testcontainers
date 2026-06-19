@@ -51,6 +51,16 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Override project name used in reuse-name prefix.",
     )
     group.addoption(
+        "--testcontainers-name-template",
+        action="store",
+        default=None,
+        dest="testcontainers_name_template",
+        help=(
+            "Template for container names. Placeholders: {project} {service} "
+            "{branch} {dir} {dirtag} {worker} {rand}."
+        ),
+    )
+    group.addoption(
         "--testcontainers-clean",
         action="store_true",
         default=False,
@@ -65,6 +75,9 @@ def pytest_configure(config: pytest.Config) -> None:
     project = config.getoption("testcontainers_project")
     if project:
         reuse.set_cli_project(project)
+    name_template = config.getoption("testcontainers_name_template")
+    if name_template:
+        reuse.set_cli_name_template(name_template)
     if config.getoption("testcontainers_no_reuse"):
         reuse.set_cli_reuse(False)
     elif config.getoption("testcontainers_reuse"):

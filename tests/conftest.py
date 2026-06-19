@@ -24,6 +24,9 @@ def _clean_state(monkeypatch: pytest.MonkeyPatch) -> None:
         "PYTEST_TESTCONTAINERS_PROJECT",
         "PYTEST_TESTCONTAINERS_NO_DAEMON_CHECK",
         "PYTEST_TESTCONTAINERS_QUIET",
+        "PYTEST_TESTCONTAINERS_NAME_TEMPLATE",
+        "PROJECT_NAME",
+        "COMPOSE_PROJECT_NAME",
     ):
         monkeypatch.delenv(var, raising=False)
     yield
