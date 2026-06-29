@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-06-29
+
+### Fixed
+
+- Restored the `reuse_name_for` name in `pytest_testcontainers.reuse` as a
+  backward-compatible alias of `container_name_for`. The template-based
+  container-naming feature renamed the function, and 0.2.1 shipped that rename —
+  which broke `pytest-testcontainers-django` < 0.2.5 (it imports the old name)
+  at import time. The alias keeps existing installs working; the default
+  `reuse_mode=True` matches the old function's byte-stable behavior.
+
 ## [0.2.1] - 2026-06-29
 
 ### Fixed

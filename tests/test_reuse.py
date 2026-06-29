@@ -330,3 +330,16 @@ def test_container_name_for_explicit_rand_not_double_appended(
     monkeypatch.setenv("PYTEST_TESTCONTAINERS_NAME_TEMPLATE", "{service}-{rand}")
     name = container_name_for("psql", reuse_mode=False)
     assert re.match(r"^psql-[0-9a-f]{4}$", name)  # exactly one rand token
+
+
+def test_reuse_name_for_backward_compat_alias(tmp_cwd) -> None:
+    """``reuse_name_for`` was renamed to ``container_name_for`` in 0.2.1.
+
+    Keep a backward-compatible alias so pytest-testcontainers-django < 0.2.5
+    (which imports the old name) doesn't break on the rename.
+    """
+    from pytest_testcontainers.reuse import reuse_name_for
+
+    assert reuse_name_for is container_name_for
+    # Old name's callers expect the byte-stable reuse name (reuse_mode=True).
+    assert reuse_name_for("psql") == container_name_for("psql", reuse_mode=True)
