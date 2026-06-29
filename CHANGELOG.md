@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-29
+
+### Fixed
+
+- **`Docker daemon is not reachable` even though `docker ps` worked**, on setups
+  where the daemon lives on a non-default socket (OrbStack, colima, a stopped
+  Docker Desktop). `docker.from_env()` — used by docker-py, by
+  testcontainers' own client, and by Ryuk's socket bind-mount — honors
+  `DOCKER_HOST` but, unlike the `docker` CLI, ignores the active
+  `docker context`, so it fell back to `/var/run/docker.sock` (absent or a
+  dangling symlink) and crashed with `FileNotFoundError`. The plugin now
+  exports `DOCKER_HOST` from the active context before any client is built, so
+  the whole process resolves Docker the way the CLI does. An explicit
+  `DOCKER_HOST` still wins; with no resolvable context it falls back to the
+  platform default socket.
+
 ## [0.2.0] - 2026-06-18
 
 ### Added
