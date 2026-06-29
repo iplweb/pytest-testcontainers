@@ -310,3 +310,10 @@ def container_name_for(
     if not reuse_mode and "{rand}" not in template:
         rendered = f"{rendered}-{rand}"
     return finalize_name(rendered)
+
+
+# Backward-compatible alias: ``container_name_for`` was named ``reuse_name_for``
+# through 0.2.0. pytest-testcontainers-django < 0.2.5 still imports the old name
+# from this module, so keep the alias to avoid breaking it on the rename. The
+# default ``reuse_mode=True`` matches the old function's byte-stable behavior.
+reuse_name_for = container_name_for
