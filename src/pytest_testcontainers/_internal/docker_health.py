@@ -9,10 +9,13 @@ disable the plugin.
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 
 from pytest_testcontainers.errors import DockerNotRunningError
+
+logger = logging.getLogger("pytest_testcontainers")
 
 _lock = threading.Lock()
 _ping_ok: bool = False
@@ -29,6 +32,45 @@ def reset_cache() -> None:
         _ping_ok = False
 
 
+def ensure_docker_host_env() -> None:
+    """Export ``DOCKER_HOST`` from the active ``docker context`` when unset.
+
+    ``docker.from_env()`` — used by docker-py, by testcontainers' own client,
+    and by Ryuk's socket bind-mount — honors ``DOCKER_HOST`` but, unlike the
+    ``docker`` CLI, ignores the active ``docker context``. On OrbStack /
+    colima / a stopped Docker Desktop the daemon lives on a non-default socket
+    and ``/var/run/docker.sock`` is absent or a dangling symlink, so container
+    launch crashes with ``FileNotFoundError`` even though ``docker ps`` works.
+
+    Exporting ``DOCKER_HOST`` once — before any client is built — makes the
+    whole process resolve Docker the way the CLI does. No-op when
+    ``DOCKER_HOST`` is already set (an explicit choice always wins) or when no
+    context endpoint resolves (fall back to the platform default socket).
+    """
+    if os.environ.get("DOCKER_HOST"):
+        return
+    ctx = _active_docker_context()
+    host = getattr(ctx, "Host", None) if ctx is not None else None
+    if host:
+        os.environ["DOCKER_HOST"] = host
+
+
+def _active_docker_context():  # type: ignore[no-untyped-def]
+    """Return the active ``docker context`` object, or ``None``.
+
+    Resolution failures (older SDK without context support, malformed
+    ``~/.docker/config.json``, missing context) are logged and swallowed so
+    the caller falls back to the platform default socket.
+    """
+    try:
+        from docker.context import ContextAPI
+
+        return ContextAPI.get_current_context()
+    except Exception:
+        logger.debug("could not resolve active docker context", exc_info=True)
+        return None
+
+
 def check_docker_daemon() -> None:
     """Ping the Docker daemon once per process (on success).
 
@@ -38,6 +80,10 @@ def check_docker_daemon() -> None:
     global _ping_ok
     if _ping_ok:
         return
+    # Honor the active `docker context` before any client (ours, testcontainers'
+    # or Ryuk's) is built — even when the ping itself is skipped, so the launch
+    # path still resolves the right socket on OrbStack / colima / Docker Desktop.
+    ensure_docker_host_env()
     if _is_truthy(os.environ.get("PYTEST_TESTCONTAINERS_NO_DAEMON_CHECK")):
         return
 

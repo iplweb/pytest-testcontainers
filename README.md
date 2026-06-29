@@ -519,6 +519,25 @@ Options:
 Underlying error: ...
 ```
 
+### `docker ps` works but pytest says the daemon is unreachable
+
+You're almost certainly on a non-default **Docker context** — OrbStack,
+colima, or a Docker Desktop install where `/var/run/docker.sock` is missing
+or a dangling symlink. `docker.from_env()` (used by docker-py *and* by
+testcontainers internally) honors `DOCKER_HOST` but, unlike the `docker`
+CLI, ignores the active `docker context`. The plugin now resolves the active
+context's endpoint for you and exports `DOCKER_HOST` before any container is
+started, so it talks to the same daemon the CLI does.
+
+If it still fails, point it at the daemon explicitly — an explicit
+`DOCKER_HOST` always wins:
+
+```bash
+docker context inspect -f '{{.Endpoints.docker.Host}}'   # see the endpoint
+export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock # e.g. OrbStack
+export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock # e.g. colima
+```
+
 When a stopped reused container can't be brought back (typically
 because the previously-mapped port is now held by something else):
 

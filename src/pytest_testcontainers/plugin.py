@@ -95,6 +95,11 @@ def pytest_cmdline_main(config: pytest.Config) -> int | None:
     except ImportError:
         sys.stderr.write("[pytest-testcontainers] docker-py not installed\n")
         return 1
+    # Honor the active `docker context` (OrbStack / colima / Docker Desktop)
+    # before from_env(), same as the launch path.
+    from pytest_testcontainers._internal.docker_health import ensure_docker_host_env
+
+    ensure_docker_host_env()
     try:
         client = docker.from_env()
         client.ping()
