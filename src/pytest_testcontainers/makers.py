@@ -112,10 +112,17 @@ def _make_generic(
         image_for_msg = constructor_kwargs.get("image") or (
             constructor_args[0] if constructor_args else container_cls.__name__
         )
-        start_or_raise(instance, str(image_for_msg))
 
+        # Arm teardown BEFORE starting. `.start()` blocks until the wait
+        # strategy passes — seconds for a Postgres seeded from an init
+        # script — and the container exists for that whole time. Arming
+        # afterwards leaves the most abort-prone window unprotected, and a
+        # start that fails its wait strategy leaves a container behind too.
+        # `stop()` is a no-op while the wrapper has no container yet.
         if not reuse_on:
             register_atexit_stop(instance)
+
+        start_or_raise(instance, str(image_for_msg))
 
     try:
         yield instance

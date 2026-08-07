@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-07
+
+### Fixed
+
+- **A container killed while it was still booting was left behind.** Teardown
+  was armed after `.start()` returned, but `.start()` blocks until the wait
+  strategy passes — many seconds for a Postgres replaying an init script, and
+  precisely the window in which someone watching a stuck machine reaches for
+  `kill`. The container existed for that whole time with nothing registered to
+  remove it, so the run died and left it to Ryuk. Teardown is now armed before
+  the container is started; `stop()` is a no-op while the wrapper has no
+  container yet. This also covers a start that fails its own wait strategy,
+  which likewise leaves a container behind.
+
 ## [0.3.0] - 2026-08-07
 
 ### Added
