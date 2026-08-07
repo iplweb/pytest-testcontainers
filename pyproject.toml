@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytest-testcontainers"
-version = "0.2.2"
+version = "0.3.0"
 description = "Named pytest fixtures and a maker convention on top of testcontainers-python."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -100,6 +100,14 @@ filterwarnings = [
     "error",
     "ignore::DeprecationWarning:docker.*",
     "ignore::DeprecationWarning:testcontainers.*",
+    # testcontainers >=4.15 moved the service modules under
+    # `testcontainers.community.*` and deprecated the old paths. It warns with
+    # stacklevel=2, so Python attributes the warning to *our* importing module,
+    # not to `testcontainers.*` — the module-keyed ignore above cannot match it.
+    # We keep importing the old paths because they are the only ones that exist
+    # across the whole supported range (testcontainers >=4.7,<5); revisit when
+    # the floor rises above 4.15.
+    "ignore:testcontainers\\..* is deprecated:DeprecationWarning",
 ]
 
 [tool.ruff]

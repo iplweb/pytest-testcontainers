@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-07
+
+### Added
+
+- **Deterministic teardown on `SIGTERM` / `SIGHUP`.** Cleanup previously ran
+  from `pytest_unconfigure` and `atexit` only, neither of which fires on these
+  signals — killing a wedged run left its containers alive until Ryuk noticed
+  the dropped socket ~10 s later, or forever if the Docker daemon restarted
+  first. A handler is now installed for as long as containers are live; it
+  stops them, restores the previous disposition and re-raises, so exit status
+  semantics are unchanged. Skipped off the main thread, and skipped for any
+  signal already set to `SIG_IGN` so `nohup pytest …` still survives a hangup.
+  `SIGKILL` cannot be intercepted and still falls through to Ryuk.
+- `--testcontainers-clean-project`, the previous narrow behaviour of
+  `--testcontainers-clean` (name prefix only). Use it on a host where another
+  pytest run may be in flight.
+
+### Changed
+
+- **The Ryuk reaper is shut down at the end of a session.**
+  testcontainers-python starts one per process — so one per xdist worker, each
+  privileged with an rw bind-mount of the Docker socket — and never closes it;
+  it idled roughly 60 s past the end of every run. Skipped entirely for
+  sessions that never started a container, so they do not pay for importing
+  testcontainers to discover there is nothing to do.
+- **`--testcontainers-clean` now also selects on the `org.testcontainers=true`
+  label and on `testcontainers-ryuk-*`**, not just the `<project>-tc-` name
+  prefix, so it reaches containers started without an explicit name and stray
+  reapers. On a shared host this also removes containers belonging to a
+  concurrent run — see the README, or use `--testcontainers-clean-project`.
+
+### Fixed
+
+- Test suite no longer fails against testcontainers >= 4.15, which deprecated
+  `testcontainers.<service>` in favour of `testcontainers.community.<service>`.
+  The warning is raised with `stacklevel=2`, so Python attributes it to the
+  importing module and the existing module-keyed ignore could not match it.
+  The imports themselves are unchanged — the old paths are the only ones that
+  exist across the whole supported range (`testcontainers >=4.7,<5`).
+
 ## [0.2.2] - 2026-06-29
 
 ### Fixed
