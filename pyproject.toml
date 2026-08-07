@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytest-testcontainers"
-version = "0.3.1"
+version = "0.3.2"
 description = "Named pytest fixtures and a maker convention on top of testcontainers-python."
 readme = "README.md"
 requires-python = ">=3.10"
