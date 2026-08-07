@@ -456,12 +456,19 @@ What changes:
 To clean up:
 
 ```bash
-pytest --testcontainers-clean
+pytest --testcontainers-clean          # everything this library may have left
+pytest --testcontainers-clean-project  # only <project>-tc-*
 ```
 
-This stops and removes all `<project>-tc-*` containers and exits with
-code 0 — a one-liner equivalent of the docker-py `containers.list +
-remove(force=True)` loop.
+`--testcontainers-clean` removes every container carrying the
+`org.testcontainers=true` label, every `testcontainers-ryuk-*`, and every
+`<project>-tc-*`, then exits with code 0.
+
+> **On a shared host, the broad sweep also removes containers belonging to a
+> pytest run happening right now** — testcontainers labels them all the same
+> way and the label carries no owner. If something else may be running,
+> use `--testcontainers-clean-project`, or check `docker ps` first and remove
+> by name.
 
 **Two pytest invocations running concurrently**: each must use its
 own `PYTEST_TESTCONTAINERS_PROJECT` to avoid name collisions. The
@@ -498,9 +505,37 @@ No TOML config table. The handful of toggles read at maker-call time:
 | `--testcontainers-no-reuse`     | force fresh-each-run mode                 |
 | `--testcontainers-project=NAME` | `PYTEST_TESTCONTAINERS_PROJECT=NAME` |
 | `--testcontainers-name-template=T` | `PYTEST_TESTCONTAINERS_NAME_TEMPLATE=T` |
-| `--testcontainers-clean`        | prune `<project>-tc-*` and exit 0    |
+| `--testcontainers-clean`        | prune labelled + ryuk + `<project>-tc-*`, exit 0 |
+| `--testcontainers-clean-project` | prune only `<project>-tc-*`, exit 0 |
 
 CLI > env > defaults.
+
+## Teardown
+
+Containers are removed on four paths, in decreasing order of preference:
+
+1. the fixture's own teardown (`stop()` → `remove(force=True)`);
+2. a `SIGTERM`/`SIGHUP` handler, installed only while containers are live;
+3. `atexit`, which covers a clean exit and `Ctrl-C`;
+4. Ryuk, testcontainers' reaper.
+
+Ryuk is deliberately the *last* line, not the routine one. It reacts about
+10 s after the socket drops, and if the Docker daemon restarts before then it
+never reacts at all — which is how a machine ends up with week-old Postgres
+containers. The signal handler exists so that killing a wedged run removes its
+containers immediately instead of leaving them parked.
+
+Two consequences worth knowing:
+
+- The handler is skipped for any signal the process was already ignoring, so
+  `nohup pytest …` still survives a hangup.
+- At the end of a session the Ryuk container is shut down explicitly.
+  testcontainers starts one per process — so one per xdist worker, each
+  privileged with an rw bind-mount of the Docker socket — and otherwise leaves
+  it idling for the remainder of its reconnection timeout.
+
+`SIGKILL` cannot be intercepted by anything in-process; that case still falls
+through to Ryuk, and if Ryuk misses it too, `--testcontainers-clean`.
 
 ## Error scenarios
 
