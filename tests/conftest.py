@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from pytest_testcontainers import reuse
+from pytest_testcontainers import containers, reuse
 from pytest_testcontainers._internal import clean_session_admin, docker_health
 
 
@@ -20,6 +20,7 @@ def _clean_state(monkeypatch: pytest.MonkeyPatch) -> None:
     reuse.reset_cli_state()
     docker_health.reset_cache()
     clean_session_admin._reset_warnings_for_tests()
+    containers._reset_teardown_state_for_tests()
     # `ensure_docker_host_env()` mutates os.environ["DOCKER_HOST"] directly, so
     # monkeypatch can't undo it. Snapshot the pre-test value and restore it in
     # teardown so a context-export in one test never leaks into the next.
@@ -39,6 +40,7 @@ def _clean_state(monkeypatch: pytest.MonkeyPatch) -> None:
     reuse.reset_cli_state()
     docker_health.reset_cache()
     clean_session_admin._reset_warnings_for_tests()
+    containers._reset_teardown_state_for_tests()
     if orig_docker_host is None:
         os.environ.pop("DOCKER_HOST", None)
     else:
