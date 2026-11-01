@@ -162,7 +162,7 @@ def make_postgres(
     **kwargs: Any,
 ):
     """Context manager wrapping ``PostgresContainer``."""
-    from testcontainers.postgres import PostgresContainer
+    from testcontainers.community.postgres import PostgresContainer
 
     constructor_kwargs: dict[str, Any] = {
         "image": image,
@@ -190,7 +190,7 @@ def make_redis(
     **kwargs: Any,
 ):
     """Context manager wrapping ``RedisContainer``."""
-    from testcontainers.redis import RedisContainer
+    from testcontainers.community.redis import RedisContainer
 
     constructor_kwargs: dict[str, Any] = {
         "image": image,

@@ -626,7 +626,7 @@ Tested separately in CI; floor is `pytest>=7.4`.
 
 ### Other runtime requirements
 
-- testcontainers-python ≥ 4.7 (modern `wait_strategies` API)
+- testcontainers-python ≥ 4.15 (`testcontainers.community.*` modules)
 - docker-py ≥ 6.1 (we use `docker.errors.NotFound`,
   `containers.exec_run(demux=True)`)
 - A working Docker daemon: Docker Desktop / colima / Rancher Desktop /

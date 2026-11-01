@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytest-testcontainers"
-version = "0.3.2"
+version = "0.3.3"
 description = "Named pytest fixtures and a maker convention on top of testcontainers-python."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -42,7 +42,7 @@ classifiers = [
 ]
 dependencies = [
     "pytest >=7.4,<10",
-    "testcontainers >=4.7,<5",
+    "testcontainers >=4.15,<5",
     "docker >=6.1",
     "tomli >=2 ; python_version < '3.11'",
 ]

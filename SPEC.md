@@ -240,8 +240,8 @@ that returns a context manager wrapping a testcontainers-python class.
 
 ```python
 from contextlib import AbstractContextManager
-from testcontainers.postgres import PostgresContainer
-from testcontainers.redis import RedisContainer
+from testcontainers.community.postgres import PostgresContainer
+from testcontainers.community.redis import RedisContainer
 from testcontainers.mysql import MySqlContainer
 from testcontainers.mongodb import MongoDbContainer
 from testcontainers.rabbitmq import RabbitMqContainer

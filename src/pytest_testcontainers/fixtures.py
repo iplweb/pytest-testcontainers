@@ -48,9 +48,9 @@ if TYPE_CHECKING:
 
     from testcontainers.mongodb import MongoDbContainer
     from testcontainers.mysql import MySqlContainer
-    from testcontainers.postgres import PostgresContainer
+    from testcontainers.community.postgres import PostgresContainer
     from testcontainers.rabbitmq import RabbitMqContainer
-    from testcontainers.redis import RedisContainer
+    from testcontainers.community.redis import RedisContainer
 
 __all__ = [
     "tc_mongo",
