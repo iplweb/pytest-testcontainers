@@ -46,10 +46,10 @@ from pytest_testcontainers.reuse import is_plugin_disabled
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from testcontainers.mongodb import MongoDbContainer
-    from testcontainers.mysql import MySqlContainer
+    from testcontainers.community.mongodb import MongoDbContainer
+    from testcontainers.community.mysql import MySqlContainer
     from testcontainers.community.postgres import PostgresContainer
-    from testcontainers.rabbitmq import RabbitMqContainer
+    from testcontainers.community.rabbitmq import RabbitMqContainer
     from testcontainers.community.redis import RedisContainer
 
 __all__ = [

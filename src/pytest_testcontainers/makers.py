@@ -219,7 +219,7 @@ def make_mysql(
     **kwargs: Any,
 ):
     """Context manager wrapping ``MySqlContainer``."""
-    from testcontainers.mysql import MySqlContainer
+    from testcontainers.community.mysql import MySqlContainer
 
     constructor_kwargs: dict[str, Any] = {
         "image": image,
@@ -250,7 +250,7 @@ def make_mongo(
     **kwargs: Any,
 ):
     """Context manager wrapping ``MongoDbContainer``."""
-    from testcontainers.mongodb import MongoDbContainer
+    from testcontainers.community.mongodb import MongoDbContainer
 
     constructor_kwargs: dict[str, Any] = {
         "image": image,
@@ -279,7 +279,7 @@ def make_rabbitmq(
     **kwargs: Any,
 ):
     """Context manager wrapping ``RabbitMqContainer``."""
-    from testcontainers.rabbitmq import RabbitMqContainer
+    from testcontainers.community.rabbitmq import RabbitMqContainer
 
     constructor_kwargs: dict[str, Any] = {
         "image": image,
